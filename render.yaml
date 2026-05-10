@@ -24,7 +24,8 @@ services:
     # Render suele tener NODE_ENV=production; npm ci entonces OMITE devDependencies y falla vite/tsc/cross-env.
     # Forzar dev-deps e inyectar VITE_BASE_PATH sin cross-env:
     buildCommand: npm ci --include=dev && env VITE_BASE_PATH=/ npm run build
-    staticPublishPath: ./frontend/dist
+    # Con rootDir: frontend, la ruta de publicación es respecto a ese directorio (no ./frontend/dist).
+    staticPublishPath: ./dist
     envVars:
       - key: NODE_VERSION
         value: "20"

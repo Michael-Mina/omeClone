@@ -18,6 +18,8 @@ El archivo `render.yaml` ya incluye el servicio **`omeclone-web`** (`runtime: st
 
 **Regla SPA:** el blueprint lleva una **rewrite** `/*` → `/index.html`. Si un archivo existe (p. ej. `/assets/index-xyz.js`), Render lo sirve; si no, devuelve el HTML de la SPA (útiles rutas `/login`, `/admin` al recargar).
 
+**`staticPublishPath` con `rootDir: frontend`:** debe ser **`./dist`**, no `./frontend/dist`; si no, Render no encuentra la carpeta tras el build.
+
 ## Crear solo el Static Site a mano (sin tocar el Blueprint)
 
 1. **New** → **Static Site** → conecta **`Michael-Mina/omeClone`**, rama **`main`**.
