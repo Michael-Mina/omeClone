@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import { Video, X } from 'lucide-react';
 import {
@@ -13,8 +12,6 @@ import { OAuthLoginButtons, type OAuthTokenPayload } from '../components/OAuthLo
 
 export default function Login() {
   const { setAuth } = useAppStore();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showAnonymousSetup, setShowAnonymousSetup] = useState(false);
   const [anonBirthYear, setAnonBirthYear] = useState<number>(0);
@@ -38,31 +35,6 @@ export default function Login() {
     setAuth(String(data.user_id || 'user'), data.access_token, role, data.display_name || null, false, {
       exemptFromAiCensorship: Boolean(data.exempt_from_ai_censorship),
     });
-  };
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const response = await fetch(apiUrl('/api/auth/login'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ username: email, password: password }),
-      });
-      const data = await response.json();
-      if (response.ok) {
-        const role = data.is_superuser ? 'superadmin' : 'user';
-        setAuth(String(data.user_id || 'user'), data.access_token, role, data.display_name || null, false, {
-          exemptFromAiCensorship: Boolean(data.exempt_from_ai_censorship),
-        });
-      } else {
-        alert(data.detail || 'Error al iniciar sesión');
-      }
-    } catch {
-      alert('Error de conexión con el servidor');
-    } finally {
-      setLoading(false);
-    }
   };
 
   const openAnonymousWizard = () => {
@@ -137,54 +109,16 @@ export default function Login() {
             <Video size={32} className="text-white transform rotate-6" />
           </div>
           <h2 className="text-3xl font-bold text-white text-center">Inicia Sesión</h2>
-          <p className="text-gray-400 mt-2 text-center text-sm">Conéctate con el mundo entero al instante.</p>
+          <p className="text-gray-400 mt-2 text-center text-sm">
+            Usa tu cuenta de Google o entra como invitado anónimo.
+          </p>
         </div>
 
         <OAuthLoginButtons onSuccess={handleOAuthSuccess} disabled={loading} />
 
         <div className="mt-6 flex items-center justify-center space-x-4">
           <div className="h-px bg-gray-800 flex-1"></div>
-          <span className="text-gray-500 text-xs font-semibold uppercase tracking-wider">O con correo</span>
-          <div className="h-px bg-gray-800 flex-1"></div>
-        </div>
-
-        <form onSubmit={handleLogin} className="space-y-4 mt-6">
-          <div>
-            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-              Correo electrónico
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-gray-950/50 border border-gray-800 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all placeholder-gray-600"
-              placeholder="tu@correo.com"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Contraseña</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-gray-950/50 border border-gray-800 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all placeholder-gray-600"
-              placeholder="••••••••"
-              required
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg transition-all transform hover:scale-[1.02] active:scale-95 disabled:opacity-50 mt-4"
-          >
-            {loading ? 'Iniciando...' : 'Entrar a mi cuenta'}
-          </button>
-        </form>
-
-        <div className="mt-6 flex items-center justify-center space-x-4">
-          <div className="h-px bg-gray-800 flex-1"></div>
-          <span className="text-gray-500 text-xs font-semibold uppercase tracking-wider">O entra sin cuenta</span>
+          <span className="text-gray-500 text-xs font-semibold uppercase tracking-wider">O sin cuenta</span>
           <div className="h-px bg-gray-800 flex-1"></div>
         </div>
 
@@ -196,16 +130,8 @@ export default function Login() {
         >
           <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Entrar como Anónimo
         </button>
-
-        <p className="mt-8 text-center text-sm text-gray-400">
-          ¿No tienes una cuenta?{' '}
-          <Link to="/register" className="text-blue-400 hover:text-blue-300 font-semibold transition-colors">
-            Regístrate gratis
-          </Link>
-        </p>
       </div>
 
-      {/* Modal mayoría de edad + perfil mínimo (anónimo) */}
       {showAnonymousSetup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="relative max-w-lg w-full bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-6 md:p-8">

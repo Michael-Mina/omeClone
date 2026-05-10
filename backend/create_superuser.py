@@ -1,3 +1,9 @@
+"""
+Crea un usuario email+contraseña con is_superuser (útil en local o si mantienes /api/auth/login).
+
+Si la UI solo usa Google: tras iniciar sesión una vez con Google, otorga admin en Neon con:
+  backend/scripts/grant_superuser_neon.sql
+"""
 from app.db.session import SessionLocal
 from app.models.user import User
 from app.core.security import get_password_hash

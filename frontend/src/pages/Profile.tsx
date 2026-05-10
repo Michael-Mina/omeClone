@@ -288,21 +288,16 @@ export default function Profile() {
               <div className="bg-gray-950/40 border border-gray-800 rounded-2xl p-5">
                 <p className="text-sm text-gray-300 font-semibold">Estás usando una sesión anónima.</p>
                 <p className="text-sm text-gray-400 mt-1">
-                  Crea una cuenta con correo para guardar tu perfil, cambiar contraseña y editar datos en cualquier momento.
+                  Para una cuenta persistente usa <strong className="text-gray-200">Iniciar sesión con Google</strong> desde la
+                  pantalla de entrada; podrás editar perfil al iniciar sesión.
                 </p>
 
-                <div className="mt-4 flex flex-col sm:flex-row gap-3">
+                <div className="mt-4">
                   <button
                     onClick={() => navigate('/login')}
-                    className="flex-1 inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-3 px-4 rounded-xl transition-all active:scale-95"
+                    className="w-full inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-3 px-4 rounded-xl transition-all active:scale-95"
                   >
-                    <LogIn size={18} /> Iniciar sesión
-                  </button>
-                  <button
-                    onClick={() => navigate('/register')}
-                    className="flex-1 inline-flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white font-bold py-3 px-4 rounded-xl transition-all active:scale-95"
-                  >
-                    Crear cuenta
+                    <LogIn size={18} /> Ir al inicio de sesión
                   </button>
                 </div>
               </div>
