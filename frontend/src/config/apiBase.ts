@@ -1,11 +1,29 @@
 /**
  * URL base del backend (REST + Socket.IO).
  *
- * Si existe `VITE_BACKEND_URL` en `.env`, se usa siempre (desarrollo y producción):
- * conexión directa al uvicorn, sin depender del proxy de Vite (evita fallos de login).
+ * Orden en producción (build):
+ * 1) `VITE_BACKEND_URL` (.env / variables de CI)
+ * 2) Convención Render del blueprint: mismo prefijo `-web` / `-api` en `*.onrender.com`
+ *    (ej. `omeclone-web.onrender.com` → `https://omeclone-api.onrender.com`)
+ * 3) Último recurso solo en local preview: puerto habitual del repo
  *
- * Si no hay variable: en dev rutas relativas `/api` → proxy Vite; en build, localhost:8002 (mismo puerto que run-api).
+ * Desarrollo (`import.meta.env.DEV`): cadena vacía → `/api` y Socket.IO vía origen (proxy Vite).
  */
+
+const LOCAL_PREVIEW_API = 'http://127.0.0.1:8002';
+
+/** `omeclone-web.onrender.com` → `https://omeclone-api.onrender.com` */
+function inferRenderSiblingApiOrigin(hostname: string): string | null {
+  const h = hostname.toLowerCase();
+  if (!h.endsWith('.onrender.com')) return null;
+  const sub = hostname.slice(0, hostname.length - '.onrender.com'.length);
+  const suffix = '-web';
+  if (!sub.toLowerCase().endsWith(suffix)) return null;
+  const base = sub.slice(0, -suffix.length);
+  if (!base) return null;
+  return `https://${base}-api.onrender.com`;
+}
+
 export function getBackendOrigin(): string {
   const v = import.meta.env.VITE_BACKEND_URL;
   if (typeof v === 'string' && v.trim() !== '') {
@@ -14,11 +32,18 @@ export function getBackendOrigin(): string {
   if (import.meta.env.DEV) {
     return '';
   }
-  return 'http://localhost:8002';
+  if (typeof window !== 'undefined' && window.location?.hostname) {
+    const inferred = inferRenderSiblingApiOrigin(window.location.hostname);
+    if (inferred) return inferred;
+  }
+  return LOCAL_PREVIEW_API;
 }
 
 export function getSocketOrigin(): string {
-  return getBackendOrigin() || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8002');
+  return (
+    getBackendOrigin() ||
+    (typeof window !== 'undefined' ? window.location.origin : LOCAL_PREVIEW_API)
+  );
 }
 
 export function apiUrl(path: string): string {
@@ -27,16 +52,18 @@ export function apiUrl(path: string): string {
   return base === '' ? p : `${base}${p}`;
 }
 
-/** Aviso en consola si el bundle de producción se generó sin API (caso habitual en Render). */
+/** Solo avisa si ni variable ni heurística cubren la API en producción. */
 export function warnIfProductionBackendMissing(): void {
   if (!import.meta.env.PROD) return;
+  if (typeof window === 'undefined') return;
+
   const v = import.meta.env.VITE_BACKEND_URL;
-  if (typeof v !== 'string' || !String(v).trim()) {
-    // eslint-disable-next-line no-console
-    console.error(
-      '[omeClone] El build NO incluyó VITE_BACKEND_URL → el cliente usa http://localhost:8002 ' +
-        'y login/registro fallan en el sitio público. En Render (Static Site): Environment → ' +
-        'VITE_BACKEND_URL = https://tu-api.onrender.com → redeploy (nuevo build).'
-    );
-  }
+  if (typeof v === 'string' && String(v).trim()) return;
+
+  if (inferRenderSiblingApiOrigin(window.location.hostname)) return;
+
+  console.warn(
+    '[omeClone] Sin VITE_BACKEND_URL y el host no sigue *-web.onrender.com → *-api. ' +
+      'Define VITE_BACKEND_URL en Render y redeploy (o renombra el static a …-web y el API a …-api).'
+  );
 }

@@ -30,7 +30,7 @@ import {
   countryLabel,
   languageLabel,
 } from '../data/profileOptions';
-import { apiUrl } from '../config/apiBase';
+import { apiUrl, getBackendOrigin } from '../config/apiBase';
 import { startMonitorRecording } from '../utils/adminMonitorRecorder';
 import { MatchChatPanel, type ChatLine } from '../components/MatchChatPanel';
 import { translateForChatDisplay, resolveTranslateTargetLang } from '../utils/chatTranslate';
@@ -273,7 +273,9 @@ const AdminDashboard: React.FC = () => {
           response.status === 401 || response.status === 403
             ? 'Sin permiso o sesión caducada. Cierra sesión y entra como superusuario con token válido (el “Modo SA” de prueba no sirve para esta lista).'
             : response.status === 404
-              ? `404 en ${listUrl}. ${extra404} · Comprueba también http://localhost:8002/openapi.json (debe listar GET /api/admin/dashboard-users).`
+              ? `404 en ${listUrl}. ${extra404} · Comprueba también ${
+                  getBackendOrigin() || (typeof window !== 'undefined' ? window.location.origin : '')
+                }/openapi.json (debe listar GET /api/admin/dashboard-users).`
               : `No se pudo cargar la lista (${response.status}).`,
         );
       }
