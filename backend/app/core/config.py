@@ -1,6 +1,21 @@
 from pydantic_settings import BaseSettings
 from typing import Optional
 
+
+def normalize_database_url(url: str) -> str:
+    """Convierte postgres:// / postgresql:// al dialecto SQLAlchemy con psycopg2."""
+    u = url.strip()
+    if not u or u.startswith("sqlite"):
+        return u
+    if "+psycopg2://" in u or "+pg8000://" in u or "+asyncpg://" in u:
+        return u
+    if u.startswith("postgres://"):
+        return "postgresql+psycopg2://" + u[len("postgres://") :]
+    if u.startswith("postgresql://"):
+        return "postgresql+psycopg2://" + u[len("postgresql://") :]
+    return u
+
+
 class Settings(BaseSettings):
     PROJECT_NAME: str = "OmeTV Clone API"
     
@@ -21,8 +36,11 @@ class Settings(BaseSettings):
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:
         if self.DATABASE_URL:
-            return self.DATABASE_URL
-        return f"postgresql+pg8000://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+            return normalize_database_url(self.DATABASE_URL)
+        return (
+            f"postgresql+psycopg2://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
+            f"@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        )
 
     model_config = {
         "env_file": ".env",

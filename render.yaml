@@ -1,0 +1,16 @@
+# Blueprint Render: https://render.com/docs/infrastructure-as-code
+# Tras el primer deploy, en el panel añade DATABASE_URL (Neon u otro Postgres) y revisa SECRET_KEY.
+
+services:
+  - type: web
+    name: omeclone-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
