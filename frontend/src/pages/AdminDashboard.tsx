@@ -338,6 +338,14 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  const nsfwGlobalControlTitle = useMemo(() => {
+    const intro =
+      'Filtro IA global (NSFW): afecta a todos los que usan el modelo local; exentos / superadmin no cargan modelo. Izquierda = permisivo, derecha = estricto.';
+    if (!nsfwGlobalSnapshot) return intro;
+    const s = nsfwGlobalSnapshot;
+    return `${intro} Valores guardados: umbral ${s.probability_threshold}, frame ${s.frame_interval_ms}ms, racha ${Math.round(s.streak_ms / 1000)}s, tolerancia ${s.grace_false_ms}ms, limpiar tras ${s.low_frames_to_clear} frames.`;
+  }, [nsfwGlobalSnapshot]);
+
   useEffect(() => {
     queueMicrotask(() => {
       void fetchUsers();
@@ -1313,38 +1321,66 @@ const AdminDashboard: React.FC = () => {
             </button>
           )}
 
-          <div className="flex items-center bg-gray-800 rounded-full border border-gray-700 p-0.5 shrink-0 sm:ms-auto lg:ms-0 w-fit max-w-full">
-            <button
-              type="button"
-              onClick={() => setFilterMode('all')}
-              className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
-                filterMode === 'all' ? 'bg-gray-700 text-white shadow-sm' : 'text-gray-400 hover:text-gray-200'
-              }`}
+          <div className="flex flex-wrap items-center gap-1.5 shrink-0 sm:ms-auto lg:ms-0 max-w-full">
+            <div className="flex items-center bg-gray-800 rounded-full border border-gray-700 p-0.5 w-fit max-w-full">
+              <button
+                type="button"
+                onClick={() => setFilterMode('all')}
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
+                  filterMode === 'all' ? 'bg-gray-700 text-white shadow-sm' : 'text-gray-400 hover:text-gray-200'
+                }`}
+              >
+                Todos
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterMode('favorites')}
+                className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold transition-all ${
+                  filterMode === 'favorites'
+                    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/50 shadow-sm'
+                    : 'text-gray-400 hover:text-amber-400'
+                }`}
+                title="Solo marcados"
+              >
+                <Flag size={12} fill={filterMode === 'favorites' ? 'currentColor' : 'none'} />
+                Marcados
+                {favoritesListed.length > 0 && (
+                  <span
+                    className={`text-[10px] px-1 py-0.5 rounded-full font-bold ${
+                      filterMode === 'favorites' ? 'bg-amber-500 text-black' : 'bg-gray-700 text-gray-300'
+                    }`}
+                  >
+                    {filterMode === 'favorites' ? sortedUsers.length : favoritesListed.length}
+                  </span>
+                )}
+              </button>
+            </div>
+            <div
+              className="flex items-center gap-1.5 bg-gray-800 rounded-full border border-gray-700 px-2 py-0.5 min-w-0"
+              title={nsfwGlobalControlTitle}
             >
-              Todos
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilterMode('favorites')}
-              className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold transition-all ${
-                filterMode === 'favorites'
-                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/50 shadow-sm'
-                  : 'text-gray-400 hover:text-amber-400'
-              }`}
-              title="Solo marcados"
-            >
-              <Flag size={12} fill={filterMode === 'favorites' ? 'currentColor' : 'none'} />
-              Marcados
-              {favoritesListed.length > 0 && (
-                <span
-                  className={`text-[10px] px-1 py-0.5 rounded-full font-bold ${
-                    filterMode === 'favorites' ? 'bg-amber-500 text-black' : 'bg-gray-700 text-gray-300'
-                  }`}
-                >
-                  {filterMode === 'favorites' ? sortedUsers.length : favoritesListed.length}
-                </span>
-              )}
-            </button>
+              <SlidersHorizontal size={12} className="text-cyan-400 shrink-0" aria-hidden />
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={nsfwIntensityDraft}
+                onChange={(e) => setNsfwIntensityDraft(Number(e.target.value))}
+                className="w-[76px] sm:w-24 md:w-28 accent-cyan-500 h-1 min-w-0"
+                aria-label="Intensidad NSFW global"
+              />
+              <span className="text-[10px] font-mono tabular-nums text-cyan-300 w-5 shrink-0 text-center">
+                {nsfwIntensityDraft}
+              </span>
+              <button
+                type="button"
+                disabled={nsfwGlobalSaving}
+                onClick={() => void saveNsfwGlobalSettings()}
+                className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-900/80 text-cyan-200 border border-cyan-900 hover:bg-cyan-950/60 disabled:opacity-40 disabled:pointer-events-none shrink-0"
+              >
+                {nsfwGlobalSaving ? '…' : 'Guardar'}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1437,46 +1473,6 @@ const AdminDashboard: React.FC = () => {
             </div>
           </div>
         )}
-
-        <div className="rounded-lg border border-gray-800 bg-gray-900/60 px-3 py-2.5 space-y-2">
-          <div className="flex items-center gap-2 text-xs font-semibold text-gray-300">
-            <SlidersHorizontal size={14} className="text-cyan-400 shrink-0" />
-            <span>Intensidad global del filtro IA (NSFW)</span>
-          </div>
-          <p className="text-[10px] text-gray-500 leading-snug">
-            Afecta a todos los usuarios que usan el modelo local. Quienes tengan exención de censura IA o superadmin no
-            cargan el modelo y no se ven afectados.
-          </p>
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="text-[10px] text-gray-500 w-16 shrink-0">Permisivo</span>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={nsfwIntensityDraft}
-              onChange={(e) => setNsfwIntensityDraft(Number(e.target.value))}
-              className="flex-1 min-w-[120px] accent-cyan-500 h-2"
-              aria-label="Intensidad NSFW global"
-            />
-            <span className="text-[10px] text-gray-500 w-14 shrink-0 text-right">Estricto</span>
-            <span className="text-xs font-mono tabular-nums text-cyan-300 w-8 text-center">{nsfwIntensityDraft}</span>
-            <button
-              type="button"
-              disabled={nsfwGlobalSaving}
-              onClick={() => void saveNsfwGlobalSettings()}
-              className="text-[11px] font-semibold px-3 py-1.5 rounded-lg bg-cyan-900/40 text-cyan-200 border border-cyan-800 hover:bg-cyan-800/50 disabled:opacity-40 disabled:pointer-events-none shrink-0"
-            >
-              {nsfwGlobalSaving ? 'Guardando…' : 'Guardar'}
-            </button>
-          </div>
-          {nsfwGlobalSnapshot && (
-            <p className="text-[10px] text-gray-500 font-mono leading-relaxed break-all">
-              Activo: umbral {nsfwGlobalSnapshot.probability_threshold} · frame {nsfwGlobalSnapshot.frame_interval_ms}ms ·
-              racha {Math.round(nsfwGlobalSnapshot.streak_ms / 1000)}s · tolerancia {nsfwGlobalSnapshot.grace_false_ms}
-              ms · limpiar tras {nsfwGlobalSnapshot.low_frames_to_clear} frames
-            </p>
-          )}
-        </div>
       </header>
 
       <main className="flex-1 min-h-0 p-3 sm:p-4 md:p-8 gap-4 md:gap-8 max-w-[1920px] mx-auto w-full grid grid-rows-[minmax(0,1fr)_auto] lg:flex lg:flex-row lg:items-stretch">
