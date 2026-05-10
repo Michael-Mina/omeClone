@@ -1,9 +1,10 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.cors import CORSMiddleware
 import socketio
 import logging
+import os
 
 from app.api.routes import auth, admin, translate
 from app.api.websockets import sio
@@ -26,16 +27,6 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="OmeTV Clone API", lifespan=lifespan)
-
-# CORS: allow_credentials=True + allow_origins=["*"] rompe en navegadores (no reflejan Access-Control-Allow-Origin).
-# El front usa JWT en memoria / Authorization, no cookies entre orígenes → credentials=False permite "*".
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # Rutas REST antes del wrapper Socket.IO (mismo objeto `app`).
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
@@ -60,6 +51,29 @@ async def api_health():
     return {"status": "ok", "service": "ometv-api", "route": "/api/health"}
 
 
-# ASGI: Socket.IO + FastAPI (fallback). Uvicorn debe servir `application`, no solo `app`.
-application = socketio.ASGIApp(sio, app)
+# ASGI: Socket.IO + FastAPI. CORS debe envolver el árbol COMPLETO; si solo está en FastAPI, algunas
+# respuestas (p. ej. errores en el puente ASGI) no llevan Access-Control-Allow-Origin.
+_mount = socketio.ASGIApp(sio, app)
+
+_extra_origins = [
+    o.strip()
+    for o in os.getenv("CORS_EXTRA_ORIGINS", "").split(",")
+    if o.strip()
+]
+_allow_origins = [
+    "https://omeclone-web.onrender.com",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    *_extra_origins,
+]
+
+application = CORSMiddleware(
+    _mount,
+    allow_origins=_allow_origins,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    # Cualquier subdominio onrender.com (previews / renombres).
+    allow_origin_regex=r"https://[a-z0-9\-]+\.onrender\.com$",
+)
 socket_app = application
