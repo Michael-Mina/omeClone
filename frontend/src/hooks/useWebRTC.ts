@@ -163,6 +163,27 @@ export const useWebRTC = () => {
   const isReconnectingRef = useRef<boolean>(false);
   const lastBlackAutoReconnectRef = useRef<number>(0);
 
+  /** Micrófono silenciado por el usuario (`track.enabled=false`; deja de enviar audio por WebRTC). */
+  const micMutedRef = useRef(false);
+  const [micMuted, setMicMuted] = useState(false);
+  /** Vídeo remoto en mute por política de autoplay: hace falta un gesto del usuario para escuchar al otro. */
+  const [remoteAudioBlocked, setRemoteAudioBlocked] = useState(false);
+
+  const syncLocalMicToMutePref = useCallback(() => {
+    const stream = localStreamRef.current;
+    if (!stream) return;
+    const mute = micMutedRef.current;
+    stream.getAudioTracks().forEach((t) => {
+      t.enabled = !mute;
+    });
+  }, []);
+
+  const toggleMicMuted = useCallback(() => {
+    micMutedRef.current = !micMutedRef.current;
+    setMicMuted(micMutedRef.current);
+    syncLocalMicToMutePref();
+  }, [syncLocalMicToMutePref]);
+
   // Initialize camera (referencia estable: no forzar re-suscripción al socket en App en cada render)
   const startLocalStream = useCallback(async () => {
     try {
@@ -179,16 +200,48 @@ export const useWebRTC = () => {
           stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         }
       }
+      /** Algunos entornos devuelven solo vídeo si el audio falló en el mismo getUserMedia. */
+      if (stream.getAudioTracks().length === 0) {
+        try {
+          const audioOnly = await navigator.mediaDevices.getUserMedia({
+            audio: AUDIO_CONSTRAINTS,
+            video: false,
+          });
+          audioOnly.getAudioTracks().forEach((t) => stream.addTrack(t));
+        } catch {
+          console.warn('[WebRTC] No se pudo añadir pista de audio; la llamada seguirá solo con vídeo.');
+        }
+      }
       localStreamRef.current = stream;
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
       }
       setTorchOn(false);
+      syncLocalMicToMutePref();
+
+      const pc = peerConnectionRef.current;
+      if (pc) {
+        const audioTrack = stream.getAudioTracks()[0];
+        if (audioTrack) {
+          const sender = pc.getSenders().find((s) => s.track?.kind === 'audio');
+          try {
+            if (sender) {
+              await sender.replaceTrack(audioTrack);
+              void applyOutboundSenderQuality(sender, 'audio');
+            } else {
+              const s = pc.addTrack(audioTrack, stream);
+              void applyOutboundSenderQuality(s, 'audio');
+            }
+          } catch {
+            /* PC puede estar cerrándose */
+          }
+        }
+      }
     } catch (err) {
       console.error('Error accessing media devices.', err);
       setError('Permisos de cámara o micrófono denegados.');
     }
-  }, []);
+  }, [syncLocalMicToMutePref]);
 
   /** Linterna (torch): suele funcionar solo en cámara trasera / Chrome Android. */
   const applyTorchToTrack = useCallback(async (videoTrack: MediaStreamTrack, on: boolean): Promise<boolean> => {
@@ -243,6 +296,7 @@ export const useWebRTC = () => {
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = newStream;
       }
+      syncLocalMicToMutePref();
 
       const pc = peerConnectionRef.current;
       if (pc) {
@@ -262,6 +316,7 @@ export const useWebRTC = () => {
         const fallback = await navigator.mediaDevices.getUserMedia(await buildMediaConstraintsAsync(prev));
         localStreamRef.current = fallback;
         if (localVideoRef.current) localVideoRef.current.srcObject = fallback;
+        syncLocalMicToMutePref();
         const pc = peerConnectionRef.current;
         const vt = fallback.getVideoTracks()[0];
         if (pc && vt) {
@@ -272,7 +327,7 @@ export const useWebRTC = () => {
         /* ignore */
       }
     }
-  }, [startLocalStream, applyTorchToTrack, torchOn]);
+  }, [startLocalStream, applyTorchToTrack, torchOn, syncLocalMicToMutePref]);
 
   const toggleTorch = useCallback(async () => {
     if (facingModeRef.current !== 'environment') return;
@@ -331,13 +386,22 @@ export const useWebRTC = () => {
     const stream = remoteStreamRef.current;
     if (el && stream) {
       el.srcObject = stream;
+      setRemoteAudioBlocked(false);
       /* Autoplay con sonido primero; si el navegador bloquea, muted + play muestra vídeo sin negro por política */
       el.muted = false;
       void el.play().catch(() => {
         el.muted = true;
+        setRemoteAudioBlocked(true);
         void el.play().catch(() => {});
       });
     }
+  }, []);
+
+  const tryUnmuteRemotePlayback = useCallback(() => {
+    const el = remoteVideoRef.current;
+    if (!el?.srcObject) return;
+    el.muted = false;
+    void el.play().then(() => setRemoteAudioBlocked(false)).catch(() => setRemoteAudioBlocked(true));
   }, []);
 
   const attachRemoteStream = useCallback(
@@ -417,11 +481,12 @@ export const useWebRTC = () => {
         const sender = pc.addTrack(track, localStreamRef.current!);
         void applyOutboundSenderQuality(sender, track.kind);
       });
+      syncLocalMicToMutePref();
     }
 
     peerConnectionRef.current = pc;
     return pc;
-  }, [attachRemoteStream]);
+  }, [attachRemoteStream, syncLocalMicToMutePref]);
 
   /** Siempre usar el mismo `pc` anclado tras cada await; evita SDP aplicado al PC equivocado (React Strict / rematches). */
   const negotiateLocalOffer = useCallback(async (pc: RTCPeerConnection) => {
@@ -746,5 +811,9 @@ export const useWebRTC = () => {
     torchOn,
     switchCamera,
     toggleTorch,
+    micMuted,
+    toggleMicMuted,
+    remoteAudioBlocked,
+    tryUnmuteRemotePlayback,
   };
 };

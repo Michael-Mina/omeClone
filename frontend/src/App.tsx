@@ -25,6 +25,9 @@ import {
   MessageSquare,
   SwitchCamera,
   Flashlight,
+  Mic,
+  MicOff,
+  Volume2,
 } from 'lucide-react';
 
 const MOBILE_PIP_W = 128;
@@ -59,6 +62,10 @@ function App() {
     torchOn,
     switchCamera,
     toggleTorch,
+    micMuted,
+    toggleMicMuted,
+    remoteAudioBlocked,
+    tryUnmuteRemotePlayback,
   } = useWebRTC();
   const { isNSFW, isModelLoading } = useNSFWDetection(localVideoRef, role, exemptFromAiCensorship);
   const exemptFromNsfwPolicy = role === 'superadmin' || exemptFromAiCensorship;
@@ -94,6 +101,12 @@ function App() {
     () => languageLabel(resolveTranslateTargetLang(translateMode, language)),
     [translateMode, language]
   );
+
+  /** Posición vertical común para FAB móvil (mic / mostrar cámara) según si el chat está visible. */
+  const mobileAccessoryBottomClass =
+    matchStatus === 'matched' && !mobileChatHidden
+      ? 'bottom-[calc(max(min(30vh,240px),128px)+12px+env(safe-area-inset-bottom,0px))]'
+      : 'bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))]';
 
   /** Al cambiar idioma destino, re-traducir mensajes visibles (usa texto original guardado). */
   useEffect(() => {
@@ -489,6 +502,18 @@ function App() {
       <div className="absolute top-1 right-1 z-20 flex gap-0.5">
         <button
           type="button"
+          onClick={() => toggleMicMuted()}
+          className={`p-1 rounded-md bg-black/60 transition-colors hover:bg-black/80 ${
+            micMuted ? 'text-red-400 ring-1 ring-red-500/60' : 'text-white'
+          }`}
+          title={micMuted ? 'Micrófono silenciado — pulsa para hablar' : 'Silenciar micrófono'}
+          aria-label={micMuted ? 'Activar micrófono' : 'Silenciar micrófono'}
+          aria-pressed={micMuted}
+        >
+          {micMuted ? <MicOff size={15} strokeWidth={2} /> : <Mic size={15} strokeWidth={2} />}
+        </button>
+        <button
+          type="button"
           onClick={() => void switchCamera()}
           className="p-1 rounded-md bg-black/60 text-white hover:bg-black/80 transition-colors"
           title="Cambiar cámara"
@@ -553,16 +578,28 @@ function App() {
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
-          <video 
-            ref={remoteVideoRef} 
-            autoPlay 
-            playsInline 
+          <video
+            ref={remoteVideoRef}
+            autoPlay
+            playsInline
             className="absolute inset-0 w-full h-full object-cover"
             style={{
               transform: `translateX(${clampedDelta * 0.3}px)`,
               transition: swipeDelta === 0 ? 'transform 0.3s ease-out' : 'none',
             }}
           />
+
+          {matchStatus === 'matched' && remoteAudioBlocked && (
+            <button
+              type="button"
+              onClick={() => tryUnmuteRemotePlayback()}
+              className="absolute top-14 right-3 md:top-16 md:right-4 z-30 flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/95 text-black text-xs font-bold shadow-lg border border-amber-400/80 hover:bg-amber-400 active:scale-95 transition-transform"
+              title="El navegador silenció el audio hasta que interactúes"
+            >
+              <Volume2 size={16} strokeWidth={2.5} />
+              Activar sonido
+            </button>
+          )}
 
           {/* Swipe visual feedback overlays (mobile only): izquierda = siguiente, derecha = detener */}
           {swipeDirection === 'left' && swipeOpacity > 0.1 && (
@@ -799,19 +836,35 @@ function App() {
         )}
 
         {!mdUp && mobilePipHidden && (
-          <button
-            type="button"
-            onClick={() => setMobilePipHidden(false)}
-            className={
-              matchStatus === 'matched' && !mobileChatHidden
-                ? 'md:hidden fixed z-[45] right-4 h-11 w-11 rounded-full flex items-center justify-center bg-gray-900/95 border border-gray-700 text-gray-100 shadow-xl active:scale-95 hover:border-gray-500 hover:bg-gray-800 hover:shadow-lg hover:scale-105 transition-[bottom] duration-300 ease-out bottom-[calc(max(min(30vh,240px),128px)+12px+env(safe-area-inset-bottom,0px))]'
-                : 'md:hidden fixed z-[45] right-4 h-11 w-11 rounded-full flex items-center justify-center bg-gray-900/95 border border-gray-700 text-gray-100 shadow-xl active:scale-95 hover:border-gray-500 hover:bg-gray-800 hover:shadow-lg hover:scale-105 transition-[bottom] duration-300 ease-out bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))]'
-            }
-            title="Mostrar mi cámara"
-            aria-label="Mostrar mi cámara"
+          <div
+            className={`md:hidden fixed z-[45] right-4 flex flex-col gap-2 items-end transition-[bottom] duration-300 ease-out ${mobileAccessoryBottomClass}`}
           >
-            <Video size={20} strokeWidth={2} />
-          </button>
+            {matchStatus === 'matched' && (
+              <button
+                type="button"
+                onClick={() => toggleMicMuted()}
+                className={`h-11 w-11 shrink-0 rounded-full flex items-center justify-center shadow-xl border transition-all active:scale-95 hover:shadow-lg hover:scale-105 ${
+                  micMuted
+                    ? 'bg-red-900/95 border-red-600 text-red-200 hover:bg-red-800'
+                    : 'bg-gray-900/95 border-gray-700 text-gray-100 hover:border-gray-500 hover:bg-gray-800'
+                }`}
+                title={micMuted ? 'Activar micrófono' : 'Silenciar micrófono'}
+                aria-label={micMuted ? 'Activar micrófono' : 'Silenciar micrófono'}
+                aria-pressed={micMuted}
+              >
+                {micMuted ? <MicOff size={20} strokeWidth={2} /> : <Mic size={20} strokeWidth={2} />}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setMobilePipHidden(false)}
+              className="h-11 w-11 shrink-0 rounded-full flex items-center justify-center bg-gray-900/95 border border-gray-700 text-gray-100 shadow-xl active:scale-95 hover:border-gray-500 hover:bg-gray-800 hover:shadow-lg hover:scale-105 transition-all"
+              title="Mostrar mi cámara"
+              aria-label="Mostrar mi cámara"
+            >
+              <Video size={20} strokeWidth={2} />
+            </button>
+          </div>
         )}
       </main>
     </div>
