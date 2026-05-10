@@ -26,3 +26,17 @@ export function apiUrl(path: string): string {
   const base = getBackendOrigin();
   return base === '' ? p : `${base}${p}`;
 }
+
+/** Aviso en consola si el bundle de producción se generó sin API (caso habitual en Render). */
+export function warnIfProductionBackendMissing(): void {
+  if (!import.meta.env.PROD) return;
+  const v = import.meta.env.VITE_BACKEND_URL;
+  if (typeof v !== 'string' || !String(v).trim()) {
+    // eslint-disable-next-line no-console
+    console.error(
+      '[omeClone] El build NO incluyó VITE_BACKEND_URL → el cliente usa http://localhost:8002 ' +
+        'y login/registro fallan en el sitio público. En Render (Static Site): Environment → ' +
+        'VITE_BACKEND_URL = https://tu-api.onrender.com → redeploy (nuevo build).'
+    );
+  }
+}

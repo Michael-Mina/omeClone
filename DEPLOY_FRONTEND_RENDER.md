@@ -50,3 +50,13 @@ El archivo `render.yaml` ya incluye el servicio **`omeclone-web`** (`runtime: st
 
 - El backend ya tiene **CORS** abierto (`allow_origins=["*"]`).
 - Tras cambiar **`VITE_BACKEND_URL`**, hay que **volver a desplegar** el Static Site para que el JS generado lleve la URL correcta.
+
+### «Error de conexión con el servidor» en login/registro
+
+Suele pasar si el build se hizo **sin** **`VITE_BACKEND_URL`**: el JS apunta a **`http://localhost:8002`**, inalcanzable desde el sitio en Render.
+
+1. **omeclone-web** → **Environment** → **`VITE_BACKEND_URL`** = `https://TU-API.onrender.com` (HTTPS, sin `/` final).
+2. Nuevo **deploy** (ideal: **Clear build cache & deploy**).
+3. **F12 → Consola**: si aparece `[omeClone] El build NO incluyó VITE_BACKEND_URL`, repetir 1–2.
+
+El API en plan gratis puede estar «dormido»: el primer request puede tardar ~1 minuto; reintenta.
