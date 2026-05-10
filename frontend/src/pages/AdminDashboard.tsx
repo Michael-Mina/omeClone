@@ -453,9 +453,26 @@ const AdminDashboard: React.FC = () => {
   }, [spyTarget]);
 
   useEffect(() => {
-    const onFs = () => setMonitorFullscreen(!!document.fullscreenElement);
+    const onFs = () => {
+      const active = !!document.fullscreenElement;
+      setMonitorFullscreen(active);
+      if (!active) {
+        try {
+          screen.orientation?.unlock?.();
+        } catch {
+          /* sin API o ya desbloqueado */
+        }
+      }
+    };
     document.addEventListener('fullscreenchange', onFs);
-    return () => document.removeEventListener('fullscreenchange', onFs);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFs);
+      try {
+        screen.orientation?.unlock?.();
+      } catch {
+        /* noop */
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -487,6 +504,14 @@ const AdminDashboard: React.FC = () => {
     navigate('/login');
   };
 
+  /** 404 de Starlette/FastAPI cuando no coincide ninguna ruta (p. ej. API antigua o puerto distinto). */
+  const isUnmatchedRoute404 = (detail: unknown): boolean => {
+    if (detail == null) return true;
+    if (typeof detail !== 'string') return true;
+    const t = detail.trim().toLowerCase();
+    return t === '' || t === 'not found';
+  };
+
   const patchExemptions = async (
     dbId: number,
     body: { exempt_from_ban?: boolean; exempt_from_ai_censorship?: boolean }
@@ -494,16 +519,25 @@ const AdminDashboard: React.FC = () => {
     try {
       const { token } = useAppStore.getState();
       const res = await fetch(apiUrl(`/api/admin/users/${dbId}/exemptions`), {
-        method: 'PUT',
+        method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as { detail?: unknown };
       if (!res.ok) {
         if (res.status === 404) {
+          if (!isUnmatchedRoute404(data.detail)) {
+            alert(
+              typeof data.detail === 'string'
+                ? data.detail
+                : 'No existe ese usuario en la base de datos (actualiza la lista).'
+            );
+            return;
+          }
           alert(
             'Ruta no encontrada (404). Comprueba que el backend tenga el último código y que VITE_BACKEND_URL ' +
-              'en frontend/.env use el mismo puerto que uvicorn (p. ej. 8002). Luego reinicia el API y `npm run dev`.'
+              'en frontend/.env coincida con el puerto de uvicorn (proxy de Vite usa la misma variable; ' +
+              'p. ej. http://127.0.0.1:8002). Luego reinicia el API y `npm run dev`.'
           );
           return;
         }
@@ -607,6 +641,22 @@ const AdminDashboard: React.FC = () => {
     try {
       if (!document.fullscreenElement) {
         await el.requestFullscreen();
+        const mobileForFs =
+          typeof window !== 'undefined' && !window.matchMedia('(min-width: 768px)').matches;
+        if (mobileForFs) {
+          const o = screen.orientation;
+          if (o && typeof o.lock === 'function') {
+            try {
+              await o.lock('landscape-primary');
+            } catch {
+              try {
+                await o.lock('landscape');
+              } catch {
+                /* Safari iOS u otros: sin lock; el panel sigue en pantalla completa */
+              }
+            }
+          }
+        }
       } else {
         await document.exitFullscreen();
       }
@@ -931,122 +981,120 @@ const AdminDashboard: React.FC = () => {
     const banExempt = Boolean(user.exempt_from_ban);
     const aiExempt = Boolean(user.exempt_from_ai_censorship);
     const dbId = user.db_user_id;
+    const age = approxAge(user.birth_year);
 
     return (
       <div
         ref={(el) => {
           rowRefs.current[user.row_key] = el;
         }}
-        className={`rounded-xl border transition-colors duration-300 ${
+        className={`rounded-lg border transition-colors duration-300 ${
           highlightedKey === user.row_key
             ? 'border-blue-500 bg-blue-900/40 ring-1 ring-blue-500/50'
             : user.sid && (user.sid === spyTarget || user.sid === spyPeerSid)
               ? 'border-purple-800/60 bg-purple-900/20'
               : isFav
                 ? 'border-amber-900/40 bg-amber-950/15'
-                : 'border-gray-800 bg-gray-900/80'
+                : 'border-gray-800 bg-gray-900/85'
         }`}
       >
-        <div className="flex items-start gap-3 p-3 pb-2">
+        <div className="flex items-center gap-2 px-2.5 py-2">
           <button
             onClick={() => toggleFavorite(user)}
             title={isFav ? 'Quitar marcador' : 'Marcar usuario'}
             type="button"
-            className={`mt-0.5 shrink-0 transition-all duration-200 hover:scale-125 ${
-              isFav ? 'text-amber-400 drop-shadow-[0_0_6px_rgba(251,191,36,0.8)]' : 'text-gray-600 hover:text-amber-400'
+            className={`shrink-0 flex size-7 items-center justify-center rounded-md transition-colors ${
+              isFav ? 'text-amber-400' : 'text-gray-600 hover:text-amber-400 hover:bg-gray-800/80'
             }`}
           >
-            <Flag size={16} fill={isFav ? 'currentColor' : 'none'} />
+            <Flag size={13} strokeWidth={isFav ? 2.25 : 2} fill={isFav ? 'currentColor' : 'none'} />
           </button>
           <div
-            className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0 ${
+            className={`size-8 rounded-full flex items-center justify-center text-white text-[11px] font-bold shrink-0 shadow-inner ${
               isFav ? 'bg-gradient-to-br from-amber-500 to-orange-500' : 'bg-gradient-to-br from-purple-500 to-pink-500'
             }`}
           >
             {(user.display_name || 'A')[0].toUpperCase()}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-medium text-gray-200 break-words">{user.display_name || 'Usuario'}</span>
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-medium text-gray-100 text-[13px] leading-tight truncate" title={user.display_name}>
+                {user.display_name || 'Usuario'}
+              </p>
               <span
-                className={`px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${
-                  user.role === 'superadmin' ? 'bg-pink-900/50 text-pink-400' : 'bg-gray-800 text-gray-400'
+                className={`shrink-0 px-1.5 py-0 rounded text-[8px] font-bold uppercase tracking-wide ${
+                  user.role === 'superadmin' ? 'bg-pink-900/50 text-pink-400' : 'bg-gray-800 text-gray-500'
                 }`}
               >
                 {user.role}
               </span>
             </div>
-            <p className="text-[10px] text-gray-600 mt-0.5">
-              {user.is_anonymous ? 'Anónimo' : 'Registrado'}
-              {isFav && (
-                <span className="ml-2 text-[9px] text-amber-500 font-bold uppercase tracking-wider">marcado</span>
-              )}
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[9px] text-gray-500">
+              <span className={`inline-flex items-center gap-1 ${statusTextClass(user)}`}>
+                <span className={`size-1.5 rounded-full shrink-0 ${statusDotClass(user)}`} />
+                {statusLabel(user)}
+              </span>
+              <span className="text-gray-700">·</span>
+              <span>{user.is_anonymous ? 'Anón.' : 'Reg.'}</span>
+              {isFav && <span className="text-amber-500 font-bold">★</span>}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-4 gap-x-2 gap-y-1 px-2.5 pb-1.5 text-[9px] border-t border-gray-800/70 pt-1.5">
+          <div className="min-w-0 col-span-2">
+            <span className="text-gray-600 uppercase tracking-wide text-[8px]">ID</span>
+            <p className="font-mono text-gray-400 truncate tabular-nums leading-tight" title={user.user_id ?? ''}>
+              {user.user_id ?? '—'}
+            </p>
+          </div>
+          <div className="min-w-0">
+            <span className="text-gray-600 uppercase tracking-wide text-[8px]">Gen.</span>
+            <p className="text-gray-300 truncate leading-tight" title={genderLabel(user.gender)}>
+              {genderLabel(user.gender)}
+            </p>
+          </div>
+          <div className="min-w-0 text-right">
+            <span className="text-gray-600 uppercase tracking-wide text-[8px]">Edad</span>
+            <p className="font-mono text-gray-400 leading-tight tabular-nums">{age != null ? `${age}` : '—'}</p>
+          </div>
+          <div className="min-w-0 col-span-2">
+            <span className="text-gray-600 uppercase tracking-wide text-[8px]">País</span>
+            <p className="text-gray-400 truncate leading-tight" title={countryLabel(user.country)}>
+              {countryLabel(user.country)}
+            </p>
+          </div>
+          <div className="min-w-0 col-span-2">
+            <span className="text-gray-600 uppercase tracking-wide text-[8px]">Idioma</span>
+            <p className="text-gray-400 truncate leading-tight" title={languageLabel(user.language)}>
+              {languageLabel(user.language)}
             </p>
           </div>
         </div>
 
-        <dl className="grid grid-cols-2 gap-x-3 gap-y-2 px-3 pb-3 text-[11px] border-t border-gray-800/80 pt-2">
-          <div className="min-w-0">
-            <dt className="text-gray-500 uppercase tracking-wide text-[9px]">ID</dt>
-            <dd className="font-mono text-gray-400 truncate" title={user.user_id ?? ''}>
-              {user.user_id ?? '—'}
-            </dd>
+        {user.connected_to ? (
+          <div className="px-2.5 pb-1 border-t border-gray-800/50 bg-gray-950/30">
+            <span className="text-[8px] text-gray-600 uppercase tracking-wide">Con</span>
+            <button
+              type="button"
+              onClick={() => jumpToUser(user.connected_to!.sid)}
+              className="mt-0.5 flex items-center gap-1.5 w-full min-w-0 text-left group rounded-md py-0.5 pr-1 -mr-1"
+              title={`Ir a ${user.connected_to.display_name}`}
+            >
+              <span className="size-6 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-[9px] font-bold text-white shrink-0">
+                {(user.connected_to.display_name || 'A')[0].toUpperCase()}
+              </span>
+              <span className="min-w-0 text-[11px] text-blue-400 group-hover:underline truncate">
+                {user.connected_to.display_name || 'Anónimo'}
+              </span>
+              <span className="text-[9px] text-gray-600 font-mono shrink-0 tabular-nums">
+                {user.connected_to.user_id || ''}
+              </span>
+            </button>
           </div>
-          <div className="min-w-0">
-            <dt className="text-gray-500 uppercase tracking-wide text-[9px]">Estado</dt>
-            <dd className={`flex items-center gap-1.5 ${statusTextClass(user)}`}>
-              <span className={`w-2 h-2 rounded-full shrink-0 ${statusDotClass(user)}`} />
-              <span className="truncate">{statusLabel(user)}</span>
-            </dd>
-          </div>
-          <div className="min-w-0">
-            <dt className="text-gray-500 uppercase tracking-wide text-[9px]">Género</dt>
-            <dd className="text-gray-300 truncate">{genderLabel(user.gender)}</dd>
-          </div>
-          <div className="min-w-0">
-            <dt className="text-gray-500 uppercase tracking-wide text-[9px]">Edad</dt>
-            <dd className="font-mono text-gray-400">{approxAge(user.birth_year) != null ? `${approxAge(user.birth_year)}` : '—'}</dd>
-          </div>
-          <div className="min-w-0 col-span-2 sm:col-span-1">
-            <dt className="text-gray-500 uppercase tracking-wide text-[9px]">País</dt>
-            <dd className="text-gray-400 truncate" title={countryLabel(user.country)}>
-              {countryLabel(user.country)}
-            </dd>
-          </div>
-          <div className="min-w-0 col-span-2 sm:col-span-1">
-            <dt className="text-gray-500 uppercase tracking-wide text-[9px]">Idioma</dt>
-            <dd className="text-gray-400 truncate" title={languageLabel(user.language)}>
-              {languageLabel(user.language)}
-            </dd>
-          </div>
-          <div className="col-span-2 min-w-0">
-            <dt className="text-gray-500 uppercase tracking-wide text-[9px]">Conectado con</dt>
-            <dd>
-              {user.connected_to ? (
-                <button
-                  type="button"
-                  onClick={() => jumpToUser(user.connected_to!.sid)}
-                  className="flex items-center gap-2 group text-left w-full min-w-0"
-                  title={`Ir a ${user.connected_to.display_name}`}
-                >
-                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white text-[10px] font-bold shrink-0">
-                    {(user.connected_to.display_name || 'A')[0].toUpperCase()}
-                  </div>
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-blue-400 group-hover:text-blue-300 group-hover:underline font-medium text-xs truncate">
-                      {user.connected_to.display_name || 'Anónimo'}
-                    </span>
-                    <span className="text-gray-600 text-[10px] font-mono">{user.connected_to.user_id || '—'}</span>
-                  </div>
-                </button>
-              ) : (
-                <span className="text-gray-600">—</span>
-              )}
-            </dd>
-          </div>
-        </dl>
+        ) : null}
 
-        <div className="border-t border-gray-800 p-2 flex flex-wrap justify-end gap-2 bg-gray-950/40">
+        <div className="border-t border-gray-800 px-2 py-1.5 flex flex-wrap justify-end gap-1 bg-black/25">
           {dbId != null && (
             <>
               <button
@@ -1057,13 +1105,13 @@ const AdminDashboard: React.FC = () => {
                     ? 'Exento de baneos — clic para quitar'
                     : 'Marcar exento de baneos (no se puede banear)'
                 }
-                className={`rounded-lg transition-all size-10 inline-flex items-center justify-center ${
+                className={`rounded-md transition-all size-8 inline-flex items-center justify-center ${
                   banExempt
                     ? 'bg-emerald-900/45 text-emerald-300 ring-1 ring-emerald-600/40'
-                    : 'bg-gray-800 text-gray-500 hover:text-emerald-400 hover:bg-gray-700'
+                    : 'bg-gray-800/90 text-gray-500 hover:text-emerald-400 hover:bg-gray-700'
                 }`}
               >
-                <ShieldCheck size={18} />
+                <ShieldCheck size={15} strokeWidth={2} />
               </button>
               <button
                 type="button"
@@ -1073,13 +1121,13 @@ const AdminDashboard: React.FC = () => {
                     ? 'Exento de censura IA (modelo local) — clic para quitar'
                     : 'Eximir de censura IA en su cliente (debe volver a iniciar sesión para aplicar)'
                 }
-                className={`rounded-lg transition-all size-10 inline-flex items-center justify-center ${
+                className={`rounded-md transition-all size-8 inline-flex items-center justify-center ${
                   aiExempt
                     ? 'bg-violet-900/45 text-violet-300 ring-1 ring-violet-600/40'
-                    : 'bg-gray-800 text-gray-500 hover:text-violet-300 hover:bg-gray-700'
+                    : 'bg-gray-800/90 text-gray-500 hover:text-violet-300 hover:bg-gray-700'
                 }`}
               >
-                <Sparkles size={18} />
+                <Sparkles size={15} strokeWidth={2} />
               </button>
             </>
           )}
@@ -1088,22 +1136,22 @@ const AdminDashboard: React.FC = () => {
             onClick={() => startSpying(user.sid)}
             disabled={!alive}
             title={alive ? 'Ver cámara (espiar)' : 'Usuario desconectado'}
-            className={`rounded-lg transition-all size-10 inline-flex items-center justify-center ${
+            className={`rounded-md transition-all size-8 inline-flex items-center justify-center ${
               user.sid && (user.sid === spyTarget || user.sid === spyPeerSid)
-                ? 'bg-purple-600 text-white shadow-[0_0_15px_rgba(147,51,234,0.5)]'
-                : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-35 disabled:pointer-events-none'
+                ? 'bg-purple-600 text-white shadow-[0_0_12px_rgba(147,51,234,0.45)]'
+                : 'bg-gray-800/90 text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-35 disabled:pointer-events-none'
             }`}
           >
-            <Video size={18} />
+            <Video size={15} strokeWidth={2} />
           </button>
           <button
             type="button"
             onClick={() => handleBan(myBanId)}
             disabled={user.role === 'superadmin' || isSelfSuperadminViewer || !myBanId || banExempt}
-            className="bg-gray-800 text-red-400 rounded-lg hover:bg-red-900/50 hover:text-red-300 transition-all size-10 inline-flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed"
+            className="bg-gray-800/90 text-red-400 rounded-md hover:bg-red-900/45 hover:text-red-300 transition-all size-8 inline-flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed"
             title={banExempt ? 'Usuario exento de baneos' : 'Ban / desconectar'}
           >
-            <ShieldBan size={18} />
+            <ShieldBan size={15} strokeWidth={2} />
           </button>
         </div>
       </div>
@@ -1309,7 +1357,7 @@ const AdminDashboard: React.FC = () => {
       </header>
 
       <main className="flex-1 min-h-0 p-3 sm:p-4 md:p-8 flex gap-4 md:gap-8 max-w-[1920px] mx-auto w-full flex-col lg:flex-row">
-        <div className="flex-1 min-w-0 min-h-[min(40vh,280px)] lg:min-h-0 bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden flex flex-col min-h-0">
+        <div className="flex-1 min-w-0 min-h-0 bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden flex flex-col">
           <div className="p-3 sm:p-4 md:p-5 border-b border-gray-800 flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center bg-gray-800/50 shrink-0">
             <h2 className="text-base md:text-xl font-bold flex flex-wrap items-center gap-2 min-w-0">
               <Users size={18} className="text-blue-400" />
@@ -1327,7 +1375,7 @@ const AdminDashboard: React.FC = () => {
             </div>
           )}
           <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-            <div className="md:hidden flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-3 space-y-2">
+            <div className="md:hidden flex-1 min-h-0 overflow-y-auto overscroll-contain px-2 py-2 space-y-1.5 [-webkit-overflow-scrolling:touch]">
               {paginatedUsers.map((user) => (
                 <UserMobileCard key={user.row_key} user={user} />
               ))}
@@ -1459,7 +1507,11 @@ const AdminDashboard: React.FC = () => {
 
         <div
           ref={monitorPanelRef}
-          className="w-full lg:w-[min(92vw,560px)] shrink-0 bg-gray-900 rounded-2xl border border-gray-800 flex flex-col overflow-hidden max-h-[min(58vh,520px)] lg:max-h-none lg:min-h-0"
+          className={`w-full lg:w-[min(92vw,560px)] shrink-0 bg-gray-900 rounded-2xl border border-gray-800 flex flex-col overflow-hidden lg:max-h-none lg:min-h-0 fullscreen:fixed fullscreen:inset-0 fullscreen:z-[200] fullscreen:max-h-none fullscreen:min-h-0 fullscreen:w-screen fullscreen:h-[100dvh] fullscreen:rounded-none fullscreen:border-0 ${
+            spyTarget
+              ? 'max-lg:max-h-[min(48vh,min(460px,100dvh))] fullscreen:max-lg:max-h-none'
+              : 'max-lg:max-h-[12rem] max-lg:min-h-[10.5rem] fullscreen:max-lg:max-h-none fullscreen:max-lg:min-h-0'
+          }`}
         >
           <div className="p-3 md:p-4 border-b border-gray-800 bg-gray-800/50 flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center shrink-0">
             <h3 className="font-bold flex items-center gap-2 text-purple-400 text-sm md:text-base min-w-0">
@@ -1597,11 +1649,13 @@ const AdminDashboard: React.FC = () => {
                 ) : null}
               </>
             ) : (
-              <div className="col-span-full text-gray-600 flex flex-col items-center justify-center gap-3 p-6 text-center">
-                <Video size={48} className="opacity-50" />
-                <p className="text-sm font-medium">Selecciona un usuario en línea para ver su cámara</p>
-                <p className="text-xs text-gray-600 max-w-[240px]">
-                  Si está en llamada, verás también al otro participante.
+              <div className="col-span-full text-gray-600 flex flex-col items-center justify-center gap-1.5 max-lg:gap-1 max-lg:p-3 lg:gap-3 lg:p-6 text-center">
+                <Video className="opacity-50 w-8 h-8 max-lg:w-7 max-lg:h-7 lg:w-12 lg:h-12 shrink-0" aria-hidden />
+                <p className="text-xs lg:text-sm font-medium leading-snug px-2 max-lg:line-clamp-2">
+                  Selecciona un usuario en línea para ver su cámara
+                </p>
+                <p className="text-[10px] lg:text-xs text-gray-600 max-w-[220px] lg:max-w-[240px] leading-snug max-lg:line-clamp-2">
+                  En llamada: también aparece el interlocutor.
                 </p>
               </div>
             )}
