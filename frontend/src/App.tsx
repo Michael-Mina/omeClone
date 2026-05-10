@@ -10,6 +10,7 @@ import { useNsfwEnforcement, NSFW_STRIKES_FOR_PERMANENT } from './hooks/useNsfwE
 import { MatchChatPanel, type ChatLine } from './components/MatchChatPanel';
 import { translateForChatDisplay, resolveTranslateTargetLang } from './utils/chatTranslate';
 import { languageLabel } from './data/profileOptions';
+import { apiUrl } from './config/apiBase';
 import { useChatTranslateMode } from './hooks/useChatTranslateMode';
 import { useMdUp } from './hooks/useMdUp';
 import {
@@ -243,6 +244,27 @@ function App() {
     emitSocketIdentify();
   }, [userId, token, displayName, isAnonymous, role, language, gender, country, birthYear, emitSocketIdentify]);
 
+  /** Respaldo: poller ligero si el socket no entregó `exemptions_updated`. */
+  useEffect(() => {
+    const tok = token?.trim();
+    if (!tok) return;
+    const syncExemptionsFromMe = async () => {
+      try {
+        const r = await fetch(apiUrl('/api/auth/me'), { headers: { Authorization: `Bearer ${tok}` } });
+        if (!r.ok) return;
+        const j = (await r.json()) as { exempt_from_ai_censorship?: unknown };
+        if (typeof j.exempt_from_ai_censorship === 'boolean') {
+          useAppStore.getState().applyServerExemptionSync({ exemptFromAiCensorship: j.exempt_from_ai_censorship });
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    void syncExemptionsFromMe();
+    const id = window.setInterval(syncExemptionsFromMe, 60_000);
+    return () => clearInterval(id);
+  }, [token]);
+
   /** Evita dos resume seguidos sin desconexión (React Strict Mode / mismo socket.id). */
   const lastResumeSocketIdRef = useRef<string | null>(null);
 
@@ -324,6 +346,20 @@ function App() {
     };
     socket.on('chat_message', onChatMessage);
 
+    const onExemptionsUpdated = (p: {
+      user_id?: number;
+      exempt_from_ai_censorship?: boolean;
+      exempt_from_ban?: boolean;
+    }) => {
+      const st = useAppStore.getState();
+      const uid = st.userId?.trim();
+      if (!uid || p.user_id == null || String(p.user_id) !== uid) return;
+      if (typeof p.exempt_from_ai_censorship === 'boolean') {
+        st.applyServerExemptionSync({ exemptFromAiCensorship: p.exempt_from_ai_censorship });
+      }
+    };
+    socket.on('exemptions_updated', onExemptionsUpdated);
+
     return () => {
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
@@ -331,6 +367,7 @@ function App() {
       socket.off('match_found');
       socket.off('online_users_count');
       socket.off('chat_message', onChatMessage);
+      socket.off('exemptions_updated', onExemptionsUpdated);
     };
   }, [resumeMatchmakingAfterConnect, setMatchStatus, setMatchData]);
 

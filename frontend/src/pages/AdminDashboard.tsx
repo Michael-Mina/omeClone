@@ -245,8 +245,9 @@ const AdminDashboard: React.FC = () => {
     return `No se encontró la ruta en el servidor. Arranca: desde backend/, python -m uvicorn app.main:application --reload --host 0.0.0.0 --port 8002`;
   };
 
-  const fetchUsers = async () => {
-    setLoading(true);
+  const fetchUsers = async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true;
+    if (!silent) setLoading(true);
     const listUrl = apiUrl('/api/admin/dashboard-users');
     try {
       const { token } = useAppStore.getState();
@@ -285,14 +286,14 @@ const AdminDashboard: React.FC = () => {
       setUsers([]);
       setAdminListError('Error de red al cargar usuarios.');
     }
-    setLoading(false);
+    if (!silent) setLoading(false);
   };
 
   useEffect(() => {
     queueMicrotask(() => {
       void fetchUsers();
     });
-    const interval = setInterval(() => void fetchUsers(), 5000);
+    const interval = setInterval(() => void fetchUsers({ silent: true }), 5000);
 
     if (!socket.connected) socket.connect();
 
@@ -547,7 +548,7 @@ const AdminDashboard: React.FC = () => {
                 ? `${data.detail} Se actualizará la lista.`
                 : 'No existe ese usuario en la base de datos. Se actualizará la lista.'
             );
-            void fetchUsers();
+            void fetchUsers({ silent: true });
             return;
           }
           alert(
@@ -560,7 +561,23 @@ const AdminDashboard: React.FC = () => {
         alert(typeof data.detail === 'string' ? data.detail : 'No se pudo actualizar las exenciones');
         return;
       }
-      fetchUsers();
+      const okPayload = data as {
+        user_id?: number;
+        exempt_from_ban?: boolean;
+        exempt_from_ai_censorship?: boolean;
+      };
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.db_user_id === dbId
+            ? {
+                ...u,
+                exempt_from_ban: Boolean(okPayload.exempt_from_ban),
+                exempt_from_ai_censorship: Boolean(okPayload.exempt_from_ai_censorship),
+              }
+            : u
+        )
+      );
+      void fetchUsers({ silent: true });
     } catch (err) {
       console.error('patchExemptions', err);
       alert('Error de conexión al actualizar exenciones');
@@ -579,7 +596,7 @@ const AdminDashboard: React.FC = () => {
         alert(typeof data.detail === 'string' ? data.detail : 'No se pudo banear / desconectar');
         return;
       }
-      fetchUsers();
+      void fetchUsers({ silent: true });
     } catch (err) {
       console.error('Error banning user', err);
     }
@@ -947,7 +964,7 @@ const AdminDashboard: React.FC = () => {
                   title={
                     aiExempt
                       ? 'Exento de censura IA (modelo local) — clic para quitar'
-                      : 'Eximir de censura IA en su cliente (debe volver a iniciar sesión para aplicar)'
+                      : 'Eximir censura IA: se aplica en el cliente al instante por socket / sync automático.'
                   }
                   className={`rounded-lg transition-all ${
                     aiExempt
@@ -1135,7 +1152,7 @@ const AdminDashboard: React.FC = () => {
                 title={
                   aiExempt
                     ? 'Exento de censura IA (modelo local) — clic para quitar'
-                    : 'Eximir de censura IA en su cliente (debe volver a iniciar sesión para aplicar)'
+                    : 'Eximir censura IA: se aplica en el cliente al instante por socket / sync automático.'
                 }
                 className={`rounded-md transition-all size-8 inline-flex items-center justify-center ${
                   aiExempt
@@ -1380,7 +1397,12 @@ const AdminDashboard: React.FC = () => {
               {filterMode === 'favorites' ? 'Marcadores' : 'Usuarios (en vivo + registrados offline)'}
               <span className="text-white text-xs px-2 py-0.5 rounded-full bg-blue-600">{totalFiltered}</span>
             </h2>
-            <button type="button" onClick={fetchUsers} title="Refrescar" className="text-gray-400 hover:text-white transition-colors">
+            <button
+              type="button"
+              onClick={() => void fetchUsers()}
+              title="Refrescar"
+              className="text-gray-400 hover:text-white transition-colors"
+            >
               <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
             </button>
           </div>

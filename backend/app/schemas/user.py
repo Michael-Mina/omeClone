@@ -30,6 +30,8 @@ class UserResponse(UserBase):
     reputation_score: int
     is_banned: bool
     is_superuser: bool = False
+    exempt_from_ban: bool = False
+    exempt_from_ai_censorship: bool = False
     created_at: datetime
     nsfw_strike_count: int = 0
     nsfw_ban_until: Optional[datetime] = None

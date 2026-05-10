@@ -36,6 +36,8 @@ interface AppState {
   setMatchData: (roomId: string, initiator: boolean) => void;
   resetMatch: () => void;
   stopMatch: () => void;
+  /** Sincronía desde servidor (admin / socket) sin volver a iniciar sesión. */
+  applyServerExemptionSync: (p: { exemptFromAiCensorship: boolean }) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -73,6 +75,7 @@ export const useAppStore = create<AppState>()(
       setMatchData: (roomId, initiator) => set({ roomId, isInitiator: initiator, matchStatus: 'matched' }),
       resetMatch: () => set({ matchStatus: 'idle', roomId: null, peerSid: null, isInitiator: false }),
       stopMatch: () => set({ matchStatus: 'stopped', roomId: null, peerSid: null, isInitiator: false }),
+      applyServerExemptionSync: (p) => set({ exemptFromAiCensorship: p.exemptFromAiCensorship }),
     }),
     {
       name: 'ometv-auth',

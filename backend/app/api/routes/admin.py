@@ -14,6 +14,21 @@ def _presence_sort_key(row: dict):
     return (order.get(row.get("presence"), 9), (row.get("display_name") or "").lower())
 
 
+def _ws_user_id_matches_db(uid_raw: object, db_id: int) -> bool:
+    """Compara user_id guardado en online_users con el PK de usuarios."""
+    if uid_raw is None:
+        return False
+    s = str(uid_raw).strip()
+    if not s:
+        return False
+    if s == str(db_id):
+        return True
+    try:
+        return int(s) == int(db_id)
+    except (TypeError, ValueError):
+        return False
+
+
 def _pick_better_online_row(a: dict, b: dict) -> dict:
     """
     Un mismo usuario registrado puede tener varios sockets (pestañas / reconexión).
@@ -23,11 +38,18 @@ def _pick_better_online_row(a: dict, b: dict) -> dict:
     ra = rank.get(a.get("presence"), 0)
     rb = rank.get(b.get("presence"), 0)
     if rb > ra:
-        return b
-    if ra > rb:
-        return a
-    sa, sb = str(a.get("sid") or ""), str(b.get("sid") or "")
-    return a if sa <= sb else b
+        winner, other = b, a
+    elif ra > rb:
+        winner, other = a, b
+    else:
+        sa, sb = str(a.get("sid") or ""), str(b.get("sid") or "")
+        winner, other = (a, b) if sa <= sb else (b, a)
+    merged = dict(winner)
+    merged["exempt_from_ban"] = bool(winner.get("exempt_from_ban") or other.get("exempt_from_ban"))
+    merged["exempt_from_ai_censorship"] = bool(
+        winner.get("exempt_from_ai_censorship") or other.get("exempt_from_ai_censorship")
+    )
+    return merged
 
 
 @router.get("/dashboard-users")
@@ -178,7 +200,7 @@ def get_online_users_alias(current_user: User = Depends(get_current_superuser), 
 
 @router.patch("/users/{user_id}/exemptions")
 @router.put("/users/{user_id}/exemptions")
-def update_user_exemptions(
+async def update_user_exemptions(
     user_id: int,
     body: UserExemptionsUpdate,
     db: Session = Depends(get_db),
@@ -193,10 +215,15 @@ def update_user_exemptions(
         user.exempt_from_ai_censorship = body.exempt_from_ai_censorship
     db.commit()
     db.refresh(user)
-    return {
+    payload = {
+        "user_id": user.id,
         "exempt_from_ban": bool(getattr(user, "exempt_from_ban", False)),
         "exempt_from_ai_censorship": bool(getattr(user, "exempt_from_ai_censorship", False)),
     }
+    for sid, info in list(online_users.items()):
+        if _ws_user_id_matches_db(info.get("user_id"), user.id):
+            await sio.emit("exemptions_updated", payload, to=str(sid))
+    return payload
 
 
 @router.put("/users/{user_id}/ban")
