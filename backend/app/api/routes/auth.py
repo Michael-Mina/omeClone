@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from fastapi.security import OAuth2PasswordRequestForm
 from app.db.session import get_db
 from app.models.user import User
@@ -80,7 +81,11 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
         language=user_in.language
     )
     db.add(new_user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Email already registered") from None
     db.refresh(new_user)
     return new_user
 

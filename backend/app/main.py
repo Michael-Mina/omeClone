@@ -27,11 +27,12 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="OmeTV Clone API", lifespan=lifespan)
 
-# Setup CORS
+# CORS: allow_credentials=True + allow_origins=["*"] rompe en navegadores (no reflejan Access-Control-Allow-Origin).
+# El front usa JWT en memoria / Authorization, no cookies entre orígenes → credentials=False permite "*".
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # TODO: Update for production
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
