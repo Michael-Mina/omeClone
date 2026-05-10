@@ -131,7 +131,7 @@ async def start_matchmaking(sid, data):
     if sid in user_rooms:
         await dissolve_active_match(sid, peers_auto_queue=True)
 
-    # Buscar match usando Redis
+    # Matchmaking en memoria (servicio MatchmakingService)
     match_result = await MatchmakingService.find_match_or_wait(user_id, sid, filters)
     
     if match_result.get("matched"):

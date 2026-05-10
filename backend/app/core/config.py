@@ -28,8 +28,6 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = "ometv_password"
     POSTGRES_DB: str = "ometv_db"
     POSTGRES_PORT: str = "5440"
-    
-    REDIS_URL: str = "redis://localhost:6379/0"
 
     DATABASE_URL: Optional[str] = None
 

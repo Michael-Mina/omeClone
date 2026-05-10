@@ -2,9 +2,7 @@ fastapi
 uvicorn[standard]
 sqlalchemy
 psycopg2-binary
-alembic
 python-socketio
-redis
 pydantic[email]
 pydantic-settings
 python-jose[cryptography]

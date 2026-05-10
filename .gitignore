@@ -26,6 +26,7 @@ frontend/dist/
 # Logs y temporales
 *.log
 .npm-cache/
+*.tmp
 
 # SO / IDE
 .DS_Store

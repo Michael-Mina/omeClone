@@ -1,9 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { ChevronDown, Languages, Send } from 'lucide-react';
 import { LANGUAGE_OPTIONS, languageLabel } from '../data/profileOptions';
-
-/** Emojis de acceso rápido (entre los más usados en chat global). */
-export const CHAT_QUICK_EMOJIS = ['😂', '❤️', '👍', '🔥', '😭'] as const;
+import { CHAT_QUICK_EMOJIS } from '../constants/chatQuickEmojis';
 
 export interface ChatLine {
   id: string;
