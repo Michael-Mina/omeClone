@@ -1,10 +1,10 @@
 # Sitio estático en GitHub Pages: https://<usuario>.github.io/<repo>/
-# Requiere variable del repositorio VITE_BACKEND_URL (URL pública del API, HTTPS).
+# El frontend principal está en Cloudflare Pages; este workflow NO corre en cada push
+# para evitar checks fallidos si Pages no está configurado. Ejecutar a mano si lo necesitas:
+# Actions → Deploy GitHub Pages → Run workflow.
 name: Deploy GitHub Pages
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
