@@ -46,12 +46,12 @@ def get_dashboard_users(db: Session = Depends(get_db), current_user: User = Depe
             continue
 
         uid_raw = info.get("user_id")
-        db_uid = None
+        candidate_db_uid = None
         try:
             if uid_raw is not None and str(uid_raw).strip() != "":
-                db_uid = int(uid_raw)
+                candidate_db_uid = int(uid_raw)
         except (TypeError, ValueError):
-            db_uid = None
+            candidate_db_uid = None
 
         room = user_rooms.get(sid)
         connected_to = None
@@ -80,17 +80,18 @@ def get_dashboard_users(db: Session = Depends(get_db), current_user: User = Depe
         is_anon = bool(info.get("is_anonymous"))
         exempt_from_ban = False
         exempt_from_ai_censorship = False
-        if db_uid is not None:
-            udb = db.get(User, db_uid)
-            if udb:
-                gender_c = gender_c or udb.gender
-                country_c = country_c or udb.country
-                language_c = language_c or udb.language
-                by_int = by_int if by_int is not None else udb.birth_year
-                if getattr(udb, "is_anonymous", False):
-                    is_anon = True
-                exempt_from_ban = bool(getattr(udb, "exempt_from_ban", False))
-                exempt_from_ai_censorship = bool(getattr(udb, "exempt_from_ai_censorship", False))
+        udb = db.get(User, candidate_db_uid) if candidate_db_uid is not None else None
+        if udb:
+            gender_c = gender_c or udb.gender
+            country_c = country_c or udb.country
+            language_c = language_c or udb.language
+            by_int = by_int if by_int is not None else udb.birth_year
+            if getattr(udb, "is_anonymous", False):
+                is_anon = True
+            exempt_from_ban = bool(getattr(udb, "exempt_from_ban", False))
+            exempt_from_ai_censorship = bool(getattr(udb, "exempt_from_ai_censorship", False))
+
+        db_uid = candidate_db_uid if udb is not None else None
 
         online_rows.append({
             "row_key": sid,

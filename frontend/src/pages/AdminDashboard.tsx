@@ -519,7 +519,7 @@ const AdminDashboard: React.FC = () => {
     try {
       const { token } = useAppStore.getState();
       const res = await fetch(apiUrl(`/api/admin/users/${dbId}/exemptions`), {
-        method: 'PATCH',
+        method: 'PUT',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
@@ -529,9 +529,10 @@ const AdminDashboard: React.FC = () => {
           if (!isUnmatchedRoute404(data.detail)) {
             alert(
               typeof data.detail === 'string'
-                ? data.detail
-                : 'No existe ese usuario en la base de datos (actualiza la lista).'
+                ? `${data.detail} Se actualizará la lista.`
+                : 'No existe ese usuario en la base de datos. Se actualizará la lista.'
             );
+            void fetchUsers();
             return;
           }
           alert(
@@ -1356,8 +1357,8 @@ const AdminDashboard: React.FC = () => {
         )}
       </header>
 
-      <main className="flex-1 min-h-0 p-3 sm:p-4 md:p-8 flex gap-4 md:gap-8 max-w-[1920px] mx-auto w-full flex-col lg:flex-row">
-        <div className="flex-1 min-w-0 min-h-0 bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden flex flex-col">
+      <main className="flex-1 min-h-0 p-3 sm:p-4 md:p-8 gap-4 md:gap-8 max-w-[1920px] mx-auto w-full grid grid-rows-[minmax(0,1fr)_auto] lg:flex lg:flex-row lg:items-stretch">
+        <div className="min-w-0 min-h-0 max-lg:max-h-full bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden flex flex-col lg:flex-1">
           <div className="p-3 sm:p-4 md:p-5 border-b border-gray-800 flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center bg-gray-800/50 shrink-0">
             <h2 className="text-base md:text-xl font-bold flex flex-wrap items-center gap-2 min-w-0">
               <Users size={18} className="text-blue-400" />
@@ -1509,8 +1510,8 @@ const AdminDashboard: React.FC = () => {
           ref={monitorPanelRef}
           className={`w-full lg:w-[min(92vw,560px)] shrink-0 bg-gray-900 rounded-2xl border border-gray-800 flex flex-col overflow-hidden lg:max-h-none lg:min-h-0 fullscreen:fixed fullscreen:inset-0 fullscreen:z-[200] fullscreen:max-h-none fullscreen:min-h-0 fullscreen:w-screen fullscreen:h-[100dvh] fullscreen:rounded-none fullscreen:border-0 ${
             spyTarget
-              ? 'max-lg:max-h-[min(48vh,min(460px,100dvh))] fullscreen:max-lg:max-h-none'
-              : 'max-lg:max-h-[12rem] max-lg:min-h-[10.5rem] fullscreen:max-lg:max-h-none fullscreen:max-lg:min-h-0'
+              ? 'max-lg:max-h-[min(34vh,min(340px,100dvh))] fullscreen:max-lg:max-h-none'
+              : 'max-lg:max-h-[10rem] max-lg:min-h-[9rem] fullscreen:max-lg:max-h-none fullscreen:max-lg:min-h-0'
           }`}
         >
           <div className="p-3 md:p-4 border-b border-gray-800 bg-gray-800/50 flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center shrink-0">
