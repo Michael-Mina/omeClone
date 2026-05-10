@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import type { PublicNsfwDetectionSettings } from './types/publicNsfwSettings';
 import { socket } from './sockets/socket';
 import { resolveMatchmakingUserId } from './utils/matchmakingUserId';
 import { resolveUserIdForIdentify } from './utils/resolveSocketUserId';
@@ -7,6 +8,8 @@ import { useNavigate } from 'react-router-dom';
 import { useWebRTC } from './hooks/useWebRTC';
 import { useNSFWDetection } from './hooks/useNSFWDetection';
 import { useNsfwEnforcement, NSFW_STRIKES_FOR_PERMANENT } from './hooks/useNsfwEnforcement';
+import type { NsfwDetectionRuntimeConfig } from './hooks/useNSFWDetection';
+import type { NsfwEnforcementRuntime } from './hooks/useNsfwEnforcement';
 import { MatchChatPanel, type ChatLine } from './components/MatchChatPanel';
 import { translateForChatDisplay, resolveTranslateTargetLang } from './utils/chatTranslate';
 import { languageLabel } from './data/profileOptions';
@@ -72,7 +75,29 @@ function App() {
     remoteAudioBlocked,
     tryUnmuteRemotePlayback,
   } = useWebRTC();
-  const { isNSFW, isModelLoading } = useNSFWDetection(localVideoRef, role, exemptFromAiCensorship);
+
+  const [nsfwPublic, setNsfwPublic] = useState<PublicNsfwDetectionSettings | null>(null);
+
+  const nsfwDetectionRuntime = useMemo((): NsfwDetectionRuntimeConfig | null => {
+    if (!nsfwPublic) return null;
+    return {
+      probabilityThreshold: nsfwPublic.probability_threshold,
+      frameIntervalMs: nsfwPublic.frame_interval_ms,
+      lowFramesToClear: nsfwPublic.low_frames_to_clear,
+    };
+  }, [nsfwPublic]);
+
+  const nsfwEnforcementRuntime = useMemo((): NsfwEnforcementRuntime | null => {
+    if (!nsfwPublic) return null;
+    return { streakMs: nsfwPublic.streak_ms, graceFalseMs: nsfwPublic.grace_false_ms };
+  }, [nsfwPublic]);
+
+  const { isNSFW, isModelLoading } = useNSFWDetection(
+    localVideoRef,
+    role,
+    exemptFromAiCensorship,
+    nsfwDetectionRuntime
+  );
   const exemptFromNsfwPolicy = role === 'superadmin' || exemptFromAiCensorship;
   const {
     visualBlur,
@@ -80,7 +105,7 @@ function App() {
     cooldownCountdownLabel,
     strikeCount,
     blocksMatchmaking,
-  } = useNsfwEnforcement(isNSFW, exemptFromNsfwPolicy, userId, token);
+  } = useNsfwEnforcement(isNSFW, exemptFromNsfwPolicy, userId, token, nsfwEnforcementRuntime);
 
   const blocksMatchmakingRef = useRef(false);
   blocksMatchmakingRef.current = blocksMatchmaking;
@@ -244,6 +269,36 @@ function App() {
     emitSocketIdentify();
   }, [userId, token, displayName, isAnonymous, role, language, gender, country, birthYear, emitSocketIdentify]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadNsfw = async () => {
+      try {
+        const r = await fetch(apiUrl('/api/settings/nsfw-detection'));
+        if (!r.ok || cancelled) return;
+        const j = (await r.json()) as PublicNsfwDetectionSettings;
+        if (
+          cancelled ||
+          typeof j.probability_threshold !== 'number' ||
+          typeof j.frame_interval_ms !== 'number' ||
+          typeof j.low_frames_to_clear !== 'number' ||
+          typeof j.streak_ms !== 'number' ||
+          typeof j.grace_false_ms !== 'number'
+        ) {
+          return;
+        }
+        setNsfwPublic(j);
+      } catch {
+        /* noop */
+      }
+    };
+    void loadNsfw();
+    const id = window.setInterval(loadNsfw, 90_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
+
   /** Respaldo: poller ligero si el socket no entregó `exemptions_updated`. */
   useEffect(() => {
     const tok = token?.trim();
@@ -360,6 +415,20 @@ function App() {
     };
     socket.on('exemptions_updated', onExemptionsUpdated);
 
+    const onNsfwGlobalSettingsUpdated = (p: PublicNsfwDetectionSettings) => {
+      if (
+        typeof p?.probability_threshold !== 'number' ||
+        typeof p?.frame_interval_ms !== 'number' ||
+        typeof p?.low_frames_to_clear !== 'number' ||
+        typeof p?.streak_ms !== 'number' ||
+        typeof p?.grace_false_ms !== 'number'
+      ) {
+        return;
+      }
+      setNsfwPublic(p);
+    };
+    socket.on('nsfw_global_settings_updated', onNsfwGlobalSettingsUpdated);
+
     return () => {
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
@@ -368,6 +437,7 @@ function App() {
       socket.off('online_users_count');
       socket.off('chat_message', onChatMessage);
       socket.off('exemptions_updated', onExemptionsUpdated);
+      socket.off('nsfw_global_settings_updated', onNsfwGlobalSettingsUpdated);
     };
   }, [resumeMatchmakingAfterConnect, setMatchStatus, setMatchData]);
 

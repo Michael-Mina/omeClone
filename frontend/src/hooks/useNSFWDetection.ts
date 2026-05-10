@@ -2,10 +2,25 @@ import { useEffect, useRef, useState } from 'react';
 import * as nsfwjs from 'nsfwjs';
 import * as tf from '@tensorflow/tfjs';
 
+/** Fallback ≈ intensidad global 50 (servidor) hasta que llegue `/api/settings/nsfw-detection`. */
+export const DEFAULT_NSFW_DETECTION_RUNTIME = {
+  probabilityThreshold: 0.6,
+  frameIntervalMs: 1500,
+  lowFramesToClear: 2,
+} as const;
+
+export type NsfwDetectionRuntimeConfig = {
+  probabilityThreshold: number;
+  frameIntervalMs: number;
+  lowFramesToClear: number;
+};
+
 export const useNSFWDetection = (
   videoRef: React.RefObject<HTMLVideoElement | null>,
   role: string,
-  exemptFromAiCensorship: boolean
+  exemptFromAiCensorship: boolean,
+  /** null → defaults locales hasta obtener config global (exentos igual omiten modelo). */
+  runtime: NsfwDetectionRuntimeConfig | null
 ) => {
   const [isNSFW, setIsNSFW] = useState(false);
   const [internalLoading, setInternalLoading] = useState(true);
@@ -15,7 +30,7 @@ export const useNSFWDetection = (
   const intervalRef = useRef<number | null>(null);
   /** Evita parpadeo: hace falta varios frames seguidos por debajo del umbral para quitar NSFW. */
   const consecutiveLowRef = useRef(0);
-  const LOW_FRAMES_TO_CLEAR = 2;
+  const rt = runtime ?? DEFAULT_NSFW_DETECTION_RUNTIME;
 
   useEffect(() => {
     if (skipModel) return;
@@ -58,13 +73,13 @@ export const useNSFWDetection = (
             }
           });
 
-          // Umbral 60%; histéresis: un frame malo ya marca; hace falta varios frames buenos seguidos para limpiar.
-          if (nsfwProbability > 0.6) {
+          // Histéresis: un frame malo ya marca; hace falta varios frames buenos seguidos para limpiar.
+          if (nsfwProbability > rt.probabilityThreshold) {
             consecutiveLowRef.current = 0;
             setIsNSFW(true);
           } else {
             consecutiveLowRef.current += 1;
-            if (consecutiveLowRef.current >= LOW_FRAMES_TO_CLEAR) {
+            if (consecutiveLowRef.current >= rt.lowFramesToClear) {
               setIsNSFW(false);
             }
           }
@@ -74,13 +89,12 @@ export const useNSFWDetection = (
       }
     };
 
-    // Analiza 1 frame cada 1.5 segundos para no saturar el procesador
-    intervalRef.current = window.setInterval(detect, 1500);
+    intervalRef.current = window.setInterval(detect, rt.frameIntervalMs);
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [videoRef, isModelLoading, skipModel]);
+  }, [videoRef, isModelLoading, skipModel, rt.probabilityThreshold, rt.frameIntervalMs, rt.lowFramesToClear]);
 
   return { isNSFW, isModelLoading };
 };

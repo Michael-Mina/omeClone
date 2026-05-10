@@ -5,6 +5,9 @@ from app.models.user import User
 from app.api.websockets import online_users, sio
 from app.api.deps import get_current_superuser
 from app.schemas.user import UserExemptionsUpdate
+from app.models.system_settings import SystemSettings
+from app.schemas.global_settings import NsfwGlobalPatch, NsfwGlobalAdminOut
+from app.services.nsfw_client_params import clamp_intensity, intensity_to_client_params
 
 router = APIRouter()
 
@@ -266,3 +269,39 @@ def unban_user(user_id: str, db: Session = Depends(get_db), current_user: User =
             raise HTTPException(status_code=404, detail="User not found")
     except ValueError:
         return {"message": "Anonymous users cannot be permanently unbanned."}
+
+
+def _get_or_create_system_settings(db: Session) -> SystemSettings:
+    row = db.get(SystemSettings, 1)
+    if row is None:
+        row = SystemSettings(id=1, nsfw_global_intensity=50)
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+    return row
+
+
+@router.get("/nsfw-global", response_model=NsfwGlobalAdminOut)
+def admin_get_nsfw_global(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_superuser),
+):
+    row = _get_or_create_system_settings(db)
+    dto = intensity_to_client_params(row.nsfw_global_intensity)
+    return NsfwGlobalAdminOut(**dto.as_dict())
+
+
+@router.put("/nsfw-global", response_model=NsfwGlobalAdminOut)
+async def admin_put_nsfw_global(
+    body: NsfwGlobalPatch,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_superuser),
+):
+    row = _get_or_create_system_settings(db)
+    row.nsfw_global_intensity = clamp_intensity(body.intensity)
+    db.commit()
+    db.refresh(row)
+    dto = intensity_to_client_params(row.nsfw_global_intensity)
+    payload = dto.as_dict()
+    await sio.emit("nsfw_global_settings_updated", payload)
+    return NsfwGlobalAdminOut(**payload)

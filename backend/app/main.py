@@ -6,12 +6,13 @@ import socketio
 import logging
 import os
 
-from app.api.routes import auth, admin, translate
+from app.api.routes import auth, admin, translate, settings_public
 from app.api.websockets import sio
 from app.db.base import Base
 from app.db.session import engine
 from app.db.sqlite_compat import ensure_user_table_columns
 from app.models.user import User  # Importar para que Base conozca la tabla
+from app.models.system_settings import SystemSettings  # tabla system_settings
 
 _log = logging.getLogger("uvicorn.error")
 
@@ -22,6 +23,15 @@ ensure_user_table_columns(engine)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    from app.db.session import SessionLocal
+
+    db = SessionLocal()
+    try:
+        if db.get(SystemSettings, 1) is None:
+            db.add(SystemSettings(id=1, nsfw_global_intensity=50))
+            db.commit()
+    finally:
+        db.close()
     _log.warning("[ometv] API lista — prueba: GET /health y GET /api/health en el puerto donde corre uvicorn")
     yield
 
@@ -31,6 +41,7 @@ app = FastAPI(title="OmeTV Clone API", lifespan=lifespan)
 # Rutas REST antes del wrapper Socket.IO (mismo objeto `app`).
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
+app.include_router(settings_public.router, prefix="/api/settings", tags=["settings"])
 app.include_router(translate.router, prefix="/api", tags=["translate"])
 
 

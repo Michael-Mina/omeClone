@@ -70,11 +70,18 @@ export type NsfwOverlayKind = 'none' | 'live' | 'cooldown' | 'permanent';
 /**
  * Strike y cooldown vienen del servidor (POST /api/auth/nsfw-strike, GET /api/auth/me).
  */
+/** Overrides desde intensidad NSFW global; null usa constantes legacy. */
+export type NsfwEnforcementRuntime = {
+  streakMs: number;
+  graceFalseMs: number;
+};
+
 export function useNsfwEnforcement(
   isNSFW: boolean,
   exempt: boolean,
   userId: string | null,
-  token: string | null
+  token: string | null,
+  runtime: NsfwEnforcementRuntime | null = null
 ) {
   const [cooldownEnd, setCooldownEnd] = useState<number | null>(null);
   const [strikeCount, setStrikeCount] = useState(0);
@@ -82,6 +89,9 @@ export function useNsfwEnforcement(
   const [nowTs, setNowTs] = useState(() => Date.now());
 
   /** Inicio de la ventana continua de NSFW (solo se anula tras GRACE_FALSE_MS sin contenido). */
+  const streakMs = runtime?.streakMs ?? NSFW_STREAK_MS;
+  const graceFalseMs = runtime?.graceFalseMs ?? GRACE_FALSE_MS;
+
   const streakAnchorRef = useRef<number | null>(null);
   const falseMsAccumRef = useRef(0);
   const lastTickRef = useRef<number>(Date.now());
@@ -211,13 +221,13 @@ export function useNsfwEnforcement(
       if (isNSFW) {
         falseMsAccumRef.current = 0;
         if (streakAnchorRef.current === null) streakAnchorRef.current = now;
-        else if (now - streakAnchorRef.current >= NSFW_STREAK_MS) {
+        else if (now - streakAnchorRef.current >= streakMs) {
           streakAnchorRef.current = null;
           void reportStrikeToServer();
         }
       } else {
         falseMsAccumRef.current += dt;
-        if (falseMsAccumRef.current >= GRACE_FALSE_MS) {
+        if (falseMsAccumRef.current >= graceFalseMs) {
           streakAnchorRef.current = null;
           falseMsAccumRef.current = 0;
         }
@@ -225,7 +235,7 @@ export function useNsfwEnforcement(
     }, 250);
 
     return () => window.clearInterval(tick);
-  }, [isNSFW, exempt, userId, token, reportStrikeToServer]);
+  }, [isNSFW, exempt, userId, token, reportStrikeToServer, streakMs, graceFalseMs]);
 
   useEffect(() => {
     const cd = cooldownEnd;

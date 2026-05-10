@@ -20,6 +20,7 @@ import {
   Circle,
   Square,
   MessageSquare,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { socket } from '../sockets/socket';
 import {
@@ -32,6 +33,7 @@ import {
 } from '../data/profileOptions';
 import { apiUrl, getBackendOrigin } from '../config/apiBase';
 import { resolveUserIdForIdentify } from '../utils/resolveSocketUserId';
+import type { PublicNsfwDetectionSettings } from '../types/publicNsfwSettings';
 import { startMonitorRecording } from '../utils/adminMonitorRecorder';
 import { MatchChatPanel, type ChatLine } from '../components/MatchChatPanel';
 import { translateForChatDisplay, resolveTranslateTargetLang } from '../utils/chatTranslate';
@@ -169,6 +171,9 @@ const AdminDashboard: React.FC = () => {
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [adminListError, setAdminListError] = useState<string | null>(null);
   const [userListPage, setUserListPage] = useState(1);
+  const [nsfwGlobalSnapshot, setNsfwGlobalSnapshot] = useState<PublicNsfwDetectionSettings | null>(null);
+  const [nsfwIntensityDraft, setNsfwIntensityDraft] = useState(50);
+  const [nsfwGlobalSaving, setNsfwGlobalSaving] = useState(false);
 
   const spyVideoPrimaryRef = useRef<HTMLVideoElement>(null);
   const spyVideoPeerRef = useRef<HTMLVideoElement>(null);
@@ -289,9 +294,54 @@ const AdminDashboard: React.FC = () => {
     if (!silent) setLoading(false);
   };
 
+  const fetchNsfwGlobalSettings = async () => {
+    try {
+      const { token: tok } = useAppStore.getState();
+      if (!tok) return;
+      const r = await fetch(apiUrl('/api/admin/nsfw-global'), {
+        headers: { Authorization: `Bearer ${tok}` },
+      });
+      if (!r.ok) return;
+      const j = (await r.json()) as PublicNsfwDetectionSettings;
+      if (typeof j.intensity === 'number') {
+        setNsfwGlobalSnapshot(j);
+        setNsfwIntensityDraft(j.intensity);
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const saveNsfwGlobalSettings = async () => {
+    const { token: tok } = useAppStore.getState();
+    if (!tok) return;
+    setNsfwGlobalSaving(true);
+    try {
+      const r = await fetch(apiUrl('/api/admin/nsfw-global'), {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intensity: nsfwIntensityDraft }),
+      });
+      const data = (await r.json().catch(() => ({}))) as { detail?: unknown } & Partial<PublicNsfwDetectionSettings>;
+      if (!r.ok) {
+        alert(typeof data.detail === 'string' ? data.detail : 'No se pudo guardar la intensidad NSFW global');
+        return;
+      }
+      if (typeof data.intensity === 'number') {
+        setNsfwGlobalSnapshot(data as PublicNsfwDetectionSettings);
+        setNsfwIntensityDraft(data.intensity);
+      }
+    } catch {
+      alert('Error de red al guardar intensidad NSFW');
+    } finally {
+      setNsfwGlobalSaving(false);
+    }
+  };
+
   useEffect(() => {
     queueMicrotask(() => {
       void fetchUsers();
+      void fetchNsfwGlobalSettings();
     });
     const interval = setInterval(() => void fetchUsers({ silent: true }), 5000);
 
@@ -1387,6 +1437,46 @@ const AdminDashboard: React.FC = () => {
             </div>
           </div>
         )}
+
+        <div className="rounded-lg border border-gray-800 bg-gray-900/60 px-3 py-2.5 space-y-2">
+          <div className="flex items-center gap-2 text-xs font-semibold text-gray-300">
+            <SlidersHorizontal size={14} className="text-cyan-400 shrink-0" />
+            <span>Intensidad global del filtro IA (NSFW)</span>
+          </div>
+          <p className="text-[10px] text-gray-500 leading-snug">
+            Afecta a todos los usuarios que usan el modelo local. Quienes tengan exención de censura IA o superadmin no
+            cargan el modelo y no se ven afectados.
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-[10px] text-gray-500 w-16 shrink-0">Permisivo</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={nsfwIntensityDraft}
+              onChange={(e) => setNsfwIntensityDraft(Number(e.target.value))}
+              className="flex-1 min-w-[120px] accent-cyan-500 h-2"
+              aria-label="Intensidad NSFW global"
+            />
+            <span className="text-[10px] text-gray-500 w-14 shrink-0 text-right">Estricto</span>
+            <span className="text-xs font-mono tabular-nums text-cyan-300 w-8 text-center">{nsfwIntensityDraft}</span>
+            <button
+              type="button"
+              disabled={nsfwGlobalSaving}
+              onClick={() => void saveNsfwGlobalSettings()}
+              className="text-[11px] font-semibold px-3 py-1.5 rounded-lg bg-cyan-900/40 text-cyan-200 border border-cyan-800 hover:bg-cyan-800/50 disabled:opacity-40 disabled:pointer-events-none shrink-0"
+            >
+              {nsfwGlobalSaving ? 'Guardando…' : 'Guardar'}
+            </button>
+          </div>
+          {nsfwGlobalSnapshot && (
+            <p className="text-[10px] text-gray-500 font-mono leading-relaxed break-all">
+              Activo: umbral {nsfwGlobalSnapshot.probability_threshold} · frame {nsfwGlobalSnapshot.frame_interval_ms}ms ·
+              racha {Math.round(nsfwGlobalSnapshot.streak_ms / 1000)}s · tolerancia {nsfwGlobalSnapshot.grace_false_ms}
+              ms · limpiar tras {nsfwGlobalSnapshot.low_frames_to_clear} frames
+            </p>
+          )}
+        </div>
       </header>
 
       <main className="flex-1 min-h-0 p-3 sm:p-4 md:p-8 gap-4 md:gap-8 max-w-[1920px] mx-auto w-full grid grid-rows-[minmax(0,1fr)_auto] lg:flex lg:flex-row lg:items-stretch">
