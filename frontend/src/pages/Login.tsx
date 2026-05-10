@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { Video, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import {
   GENDER_OPTIONS,
   COUNTRY_OPTIONS,
@@ -105,8 +105,15 @@ export default function Login() {
 
       <div className="max-w-md w-full bg-gray-900/80 backdrop-blur-xl border border-gray-800 rounded-3xl shadow-2xl p-8 z-10">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-blue-500/30 transform -rotate-6">
-            <Video size={32} className="text-white transform rotate-6" />
+          <div className="mb-4 shadow-lg shadow-blue-500/25 transform -rotate-3 select-none">
+            <img
+              src={`${import.meta.env.BASE_URL}favicon.svg`}
+              alt="OmeClone"
+              width={64}
+              height={64}
+              className="w-16 h-16 rounded-2xl"
+              decoding="async"
+            />
           </div>
           <h2 className="text-3xl font-bold text-white text-center">Inicia Sesión</h2>
           <p className="text-gray-400 mt-2 text-center text-sm">
