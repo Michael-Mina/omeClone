@@ -10,6 +10,7 @@ import { MatchChatPanel, type ChatLine } from './components/MatchChatPanel';
 import { translateForChatDisplay, resolveTranslateTargetLang } from './utils/chatTranslate';
 import { languageLabel } from './data/profileOptions';
 import { useChatTranslateMode } from './hooks/useChatTranslateMode';
+import { useMdUp } from './hooks/useMdUp';
 import {
   Video,
   SkipForward,
@@ -26,23 +27,8 @@ import {
   Flashlight,
 } from 'lucide-react';
 
-const MD_UP_MQ = '(min-width: 768px)';
 const MOBILE_PIP_W = 128;
 const MOBILE_PIP_H = 196;
-
-function useMdUp() {
-  const [mdUp, setMdUp] = useState(() =>
-    typeof window !== 'undefined' ? window.matchMedia(MD_UP_MQ).matches : false
-  );
-  useEffect(() => {
-    const mq = window.matchMedia(MD_UP_MQ);
-    const onChange = () => setMdUp(mq.matches);
-    onChange();
-    mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
-  }, []);
-  return mdUp;
-}
 
 function App() {
   const navigate = useNavigate();

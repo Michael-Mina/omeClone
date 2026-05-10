@@ -35,6 +35,7 @@ import { startMonitorRecording } from '../utils/adminMonitorRecorder';
 import { MatchChatPanel, type ChatLine } from '../components/MatchChatPanel';
 import { translateForChatDisplay, resolveTranslateTargetLang } from '../utils/chatTranslate';
 import { useChatTranslateMode } from '../hooks/useChatTranslateMode';
+import { useMdUp } from '../hooks/useMdUp';
 
 interface ConnectedPeer {
   sid: string;
@@ -175,10 +176,11 @@ const AdminDashboard: React.FC = () => {
   const spyPrimarySidRef = useRef<string | null>(null);
   const spyPeerSidRef = useRef<string | null>(null);
   const monitorPanelRef = useRef<HTMLDivElement>(null);
-  const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
+  const rowRefs = useRef<Record<string, HTMLElement | null>>({});
   const [monitorChatMessages, setMonitorChatMessages] = useState<ChatLine[]>([]);
   const [monitorChatHidden, setMonitorChatHidden] = useState(false);
 
+  const mdUp = useMdUp();
   const { mode: translateMode, setMode: setTranslateMode } = useChatTranslateMode();
   const translateModeRef = useRef(translateMode);
   translateModeRef.current = translateMode;
@@ -670,7 +672,7 @@ const AdminDashboard: React.FC = () => {
   ]);
 
   const selectCls =
-    'bg-gray-900 border border-gray-700 text-[11px] rounded-md px-2 py-1 text-gray-200 min-w-0 max-w-[8.75rem]';
+    'bg-gray-900 border border-gray-700 text-[11px] rounded-md px-2 py-1 text-gray-200 min-w-0 w-full sm:w-auto sm:max-w-[8.75rem]';
 
   const favoritesListed = users.filter((u) => userMatchesAnyFavorite(u, favorites));
 
@@ -919,6 +921,193 @@ const AdminDashboard: React.FC = () => {
     );
   };
 
+  const UserMobileCard: React.FC<{ user: DashboardUser }> = ({ user }) => {
+    const isFav = userMatchesAnyFavorite(user, favorites);
+    const alive = !!user.sid;
+    const myBanId = user.user_id ?? '';
+    const isSelfSuperadminViewer = roleMatchesAdminSession(user.user_id);
+    const banExempt = Boolean(user.exempt_from_ban);
+    const aiExempt = Boolean(user.exempt_from_ai_censorship);
+    const dbId = user.db_user_id;
+
+    return (
+      <div
+        ref={(el) => {
+          rowRefs.current[user.row_key] = el;
+        }}
+        className={`rounded-xl border transition-colors duration-300 ${
+          highlightedKey === user.row_key
+            ? 'border-blue-500 bg-blue-900/40 ring-1 ring-blue-500/50'
+            : user.sid && (user.sid === spyTarget || user.sid === spyPeerSid)
+              ? 'border-purple-800/60 bg-purple-900/20'
+              : isFav
+                ? 'border-amber-900/40 bg-amber-950/15'
+                : 'border-gray-800 bg-gray-900/80'
+        }`}
+      >
+        <div className="flex items-start gap-3 p-3 pb-2">
+          <button
+            onClick={() => toggleFavorite(user)}
+            title={isFav ? 'Quitar marcador' : 'Marcar usuario'}
+            type="button"
+            className={`mt-0.5 shrink-0 transition-all duration-200 hover:scale-125 ${
+              isFav ? 'text-amber-400 drop-shadow-[0_0_6px_rgba(251,191,36,0.8)]' : 'text-gray-600 hover:text-amber-400'
+            }`}
+          >
+            <Flag size={16} fill={isFav ? 'currentColor' : 'none'} />
+          </button>
+          <div
+            className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0 ${
+              isFav ? 'bg-gradient-to-br from-amber-500 to-orange-500' : 'bg-gradient-to-br from-purple-500 to-pink-500'
+            }`}
+          >
+            {(user.display_name || 'A')[0].toUpperCase()}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium text-gray-200 break-words">{user.display_name || 'Usuario'}</span>
+              <span
+                className={`px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${
+                  user.role === 'superadmin' ? 'bg-pink-900/50 text-pink-400' : 'bg-gray-800 text-gray-400'
+                }`}
+              >
+                {user.role}
+              </span>
+            </div>
+            <p className="text-[10px] text-gray-600 mt-0.5">
+              {user.is_anonymous ? 'Anónimo' : 'Registrado'}
+              {isFav && (
+                <span className="ml-2 text-[9px] text-amber-500 font-bold uppercase tracking-wider">marcado</span>
+              )}
+            </p>
+          </div>
+        </div>
+
+        <dl className="grid grid-cols-2 gap-x-3 gap-y-2 px-3 pb-3 text-[11px] border-t border-gray-800/80 pt-2">
+          <div className="min-w-0">
+            <dt className="text-gray-500 uppercase tracking-wide text-[9px]">ID</dt>
+            <dd className="font-mono text-gray-400 truncate" title={user.user_id ?? ''}>
+              {user.user_id ?? '—'}
+            </dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-gray-500 uppercase tracking-wide text-[9px]">Estado</dt>
+            <dd className={`flex items-center gap-1.5 ${statusTextClass(user)}`}>
+              <span className={`w-2 h-2 rounded-full shrink-0 ${statusDotClass(user)}`} />
+              <span className="truncate">{statusLabel(user)}</span>
+            </dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-gray-500 uppercase tracking-wide text-[9px]">Género</dt>
+            <dd className="text-gray-300 truncate">{genderLabel(user.gender)}</dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-gray-500 uppercase tracking-wide text-[9px]">Edad</dt>
+            <dd className="font-mono text-gray-400">{approxAge(user.birth_year) != null ? `${approxAge(user.birth_year)}` : '—'}</dd>
+          </div>
+          <div className="min-w-0 col-span-2 sm:col-span-1">
+            <dt className="text-gray-500 uppercase tracking-wide text-[9px]">País</dt>
+            <dd className="text-gray-400 truncate" title={countryLabel(user.country)}>
+              {countryLabel(user.country)}
+            </dd>
+          </div>
+          <div className="min-w-0 col-span-2 sm:col-span-1">
+            <dt className="text-gray-500 uppercase tracking-wide text-[9px]">Idioma</dt>
+            <dd className="text-gray-400 truncate" title={languageLabel(user.language)}>
+              {languageLabel(user.language)}
+            </dd>
+          </div>
+          <div className="col-span-2 min-w-0">
+            <dt className="text-gray-500 uppercase tracking-wide text-[9px]">Conectado con</dt>
+            <dd>
+              {user.connected_to ? (
+                <button
+                  type="button"
+                  onClick={() => jumpToUser(user.connected_to!.sid)}
+                  className="flex items-center gap-2 group text-left w-full min-w-0"
+                  title={`Ir a ${user.connected_to.display_name}`}
+                >
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white text-[10px] font-bold shrink-0">
+                    {(user.connected_to.display_name || 'A')[0].toUpperCase()}
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-blue-400 group-hover:text-blue-300 group-hover:underline font-medium text-xs truncate">
+                      {user.connected_to.display_name || 'Anónimo'}
+                    </span>
+                    <span className="text-gray-600 text-[10px] font-mono">{user.connected_to.user_id || '—'}</span>
+                  </div>
+                </button>
+              ) : (
+                <span className="text-gray-600">—</span>
+              )}
+            </dd>
+          </div>
+        </dl>
+
+        <div className="border-t border-gray-800 p-2 flex flex-wrap justify-end gap-2 bg-gray-950/40">
+          {dbId != null && (
+            <>
+              <button
+                type="button"
+                onClick={() => patchExemptions(dbId, { exempt_from_ban: !banExempt })}
+                title={
+                  banExempt
+                    ? 'Exento de baneos — clic para quitar'
+                    : 'Marcar exento de baneos (no se puede banear)'
+                }
+                className={`rounded-lg transition-all size-10 inline-flex items-center justify-center ${
+                  banExempt
+                    ? 'bg-emerald-900/45 text-emerald-300 ring-1 ring-emerald-600/40'
+                    : 'bg-gray-800 text-gray-500 hover:text-emerald-400 hover:bg-gray-700'
+                }`}
+              >
+                <ShieldCheck size={18} />
+              </button>
+              <button
+                type="button"
+                onClick={() => patchExemptions(dbId, { exempt_from_ai_censorship: !aiExempt })}
+                title={
+                  aiExempt
+                    ? 'Exento de censura IA (modelo local) — clic para quitar'
+                    : 'Eximir de censura IA en su cliente (debe volver a iniciar sesión para aplicar)'
+                }
+                className={`rounded-lg transition-all size-10 inline-flex items-center justify-center ${
+                  aiExempt
+                    ? 'bg-violet-900/45 text-violet-300 ring-1 ring-violet-600/40'
+                    : 'bg-gray-800 text-gray-500 hover:text-violet-300 hover:bg-gray-700'
+                }`}
+              >
+                <Sparkles size={18} />
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() => startSpying(user.sid)}
+            disabled={!alive}
+            title={alive ? 'Ver cámara (espiar)' : 'Usuario desconectado'}
+            className={`rounded-lg transition-all size-10 inline-flex items-center justify-center ${
+              user.sid && (user.sid === spyTarget || user.sid === spyPeerSid)
+                ? 'bg-purple-600 text-white shadow-[0_0_15px_rgba(147,51,234,0.5)]'
+                : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-35 disabled:pointer-events-none'
+            }`}
+          >
+            <Video size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleBan(myBanId)}
+            disabled={user.role === 'superadmin' || isSelfSuperadminViewer || !myBanId || banExempt}
+            className="bg-gray-800 text-red-400 rounded-lg hover:bg-red-900/50 hover:text-red-300 transition-all size-10 inline-flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed"
+            title={banExempt ? 'Usuario exento de baneos' : 'Ban / desconectar'}
+          >
+            <ShieldBan size={18} />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   function roleMatchesAdminSession(peerUserId: string | null) {
     if (!peerUserId || !userId) return false;
     return peerUserId === String(userId);
@@ -945,8 +1134,8 @@ const AdminDashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative group flex-1 min-w-[min(100%,220px)] max-w-xl">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="relative group w-full sm:flex-1 sm:min-w-[min(100%,220px)] sm:max-w-xl">
             <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-400" />
             <input
               type="text"
@@ -991,7 +1180,7 @@ const AdminDashboard: React.FC = () => {
             </button>
           )}
 
-          <div className="flex items-center bg-gray-800 rounded-full border border-gray-700 p-0.5 shrink-0 ms-auto lg:ms-0">
+          <div className="flex items-center bg-gray-800 rounded-full border border-gray-700 p-0.5 shrink-0 sm:ms-auto lg:ms-0 w-fit max-w-full">
             <button
               type="button"
               onClick={() => setFilterMode('all')}
@@ -1028,7 +1217,7 @@ const AdminDashboard: React.FC = () => {
 
         {filtersExpanded && (
           <div className="rounded-lg border border-gray-800 bg-gray-800/25 px-2 py-2">
-            <div className="flex flex-wrap gap-2 items-end">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:flex lg:flex-wrap gap-2 items-end">
               <select
                 value={filterGender}
                 onChange={(e) => setFilterGender(e.target.value)}
@@ -1068,7 +1257,7 @@ const AdminDashboard: React.FC = () => {
               <select
                 value={filterPresence}
                 onChange={(e) => setFilterPresence(e.target.value)}
-                className={`${selectCls} max-w-[10rem]`}
+                className={`${selectCls} sm:max-w-[10rem]`}
               >
                 <option value="">Estado</option>
                 <option value="online">Conectados (cualquier)</option>
@@ -1093,7 +1282,7 @@ const AdminDashboard: React.FC = () => {
                 aria-label="Edad mínima"
                 value={filterAgeMin}
                 onChange={(e) => setFilterAgeMin(e.target.value)}
-                className="w-[76px] bg-gray-900 border border-gray-700 text-[11px] rounded-md px-2 py-1 text-gray-200 shrink-0"
+                className="min-w-0 w-full sm:w-[76px] bg-gray-900 border border-gray-700 text-[11px] rounded-md px-2 py-1 text-gray-200 shrink-0"
               />
               <input
                 type="number"
@@ -1103,7 +1292,7 @@ const AdminDashboard: React.FC = () => {
                 aria-label="Edad máxima"
                 value={filterAgeMax}
                 onChange={(e) => setFilterAgeMax(e.target.value)}
-                className="w-[76px] bg-gray-900 border border-gray-700 text-[11px] rounded-md px-2 py-1 text-gray-200 shrink-0"
+                className="min-w-0 w-full sm:w-[76px] bg-gray-900 border border-gray-700 text-[11px] rounded-md px-2 py-1 text-gray-200 shrink-0"
               />
               <button
                 type="button"
@@ -1117,10 +1306,10 @@ const AdminDashboard: React.FC = () => {
         )}
       </header>
 
-      <main className="flex-1 min-h-0 p-4 md:p-8 flex gap-8 max-w-[1920px] mx-auto w-full flex-col xl:flex-row">
-        <div className="flex-1 min-w-0 bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden flex flex-col min-h-0">
-          <div className="p-4 md:p-5 border-b border-gray-800 flex justify-between items-center bg-gray-800/50 shrink-0">
-            <h2 className="text-lg md:text-xl font-bold flex items-center gap-2">
+      <main className="flex-1 min-h-0 p-3 sm:p-4 md:p-8 flex gap-4 md:gap-8 max-w-[1920px] mx-auto w-full flex-col lg:flex-row">
+        <div className="flex-1 min-w-0 min-h-[min(40vh,280px)] lg:min-h-0 bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden flex flex-col min-h-0">
+          <div className="p-3 sm:p-4 md:p-5 border-b border-gray-800 flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center bg-gray-800/50 shrink-0">
+            <h2 className="text-base md:text-xl font-bold flex flex-wrap items-center gap-2 min-w-0">
               <Users size={18} className="text-blue-400" />
               {filterMode === 'favorites' ? 'Marcadores' : 'Usuarios (en vivo + registrados offline)'}
               <span className="text-white text-xs px-2 py-0.5 rounded-full bg-blue-600">{totalFiltered}</span>
@@ -1135,98 +1324,132 @@ const AdminDashboard: React.FC = () => {
               {adminListError}
             </div>
           )}
-          <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
-            <table className="w-full text-left text-sm text-gray-300 min-w-[1040px]">
-              <thead className="text-[10px] md:text-xs text-gray-400 uppercase bg-gray-900/80 border-b border-gray-800">
-                <tr>
-                  <th className="pl-4 pr-1 py-3 w-8">
-                    <Flag size={12} className="text-amber-500" />
-                  </th>
-                  <th className="px-3 py-3 font-semibold whitespace-nowrap">Usuario</th>
-                  <th className="px-3 py-3 font-semibold">ID</th>
-                  <th className="px-3 py-3 font-semibold">Rol</th>
-                  <th className="px-3 py-3 font-semibold">Estado</th>
-                  <th className="px-3 py-3 font-semibold">Género</th>
-                  <th className="px-3 py-3 font-semibold">Edad</th>
-                  <th className="px-3 py-3 font-semibold">País</th>
-                  <th className="px-3 py-3 font-semibold">Idioma</th>
-                  <th className="px-3 py-3 font-semibold">Conectado con</th>
-                  <th className="px-3 py-3 font-semibold text-right min-w-[12.5rem] whitespace-nowrap">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800">
-                {paginatedUsers.map((user) => (
-                  <UserRow key={user.row_key} user={user} />
-                ))}
-                {sortedUsers.length === 0 && (
+          <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+            <div className="md:hidden flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-3 space-y-2">
+              {paginatedUsers.map((user) => (
+                <UserMobileCard key={user.row_key} user={user} />
+              ))}
+              {sortedUsers.length === 0 && (
+                <div className="flex flex-col items-center justify-center gap-3 text-gray-500 py-12 px-4 text-center">
+                  {filterMode === 'favorites' ? (
+                    <>
+                      <Flag size={36} className="opacity-30 text-amber-500" />
+                      <p className="italic text-sm">No hay marcados que cumplan los filtros.</p>
+                      <button type="button" onClick={() => setFilterMode('all')} className="text-xs text-blue-400 hover:underline">
+                        Ver todos
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <Users size={36} className="opacity-30" />
+                      <p className="italic text-sm">
+                        {users.length === 0 && !loading
+                          ? adminListError
+                            ? 'No se cargó la lista. Revisa el aviso de arriba o pulsa refrescar.'
+                            : 'No hay usuarios en la lista (comprueba el backend o la conexión).'
+                          : 'No hay usuarios según estos criterios.'}
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="hidden md:block overflow-x-auto overflow-y-auto flex-1 min-h-0">
+              <table className="w-full text-left text-sm text-gray-300 min-w-[880px] lg:min-w-[1040px]">
+                <thead className="text-[10px] md:text-xs text-gray-400 uppercase bg-gray-900/80 border-b border-gray-800">
                   <tr>
-                    <td colSpan={11} className="px-6 py-12 text-center">
-                      <div className="flex flex-col items-center gap-3 text-gray-500">
-                        {filterMode === 'favorites' ? (
-                          <>
-                            <Flag size={36} className="opacity-30 text-amber-500" />
-                            <p className="italic">No hay marcados que cumplan los filtros.</p>
-                            <button type="button" onClick={() => setFilterMode('all')} className="text-xs text-blue-400 hover:underline">
-                              Ver todos
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <Users size={36} className="opacity-30" />
-                            <p className="italic">
-                              {users.length === 0 && !loading
-                                ? adminListError
-                                  ? 'No se cargó la lista. Revisa el aviso de arriba o pulsa refrescar.'
-                                  : 'No hay usuarios en la lista (comprueba el backend o la conexión).'
-                                : 'No hay usuarios según estos criterios.'}
-                            </p>
-                          </>
-                        )}
-                      </div>
-                    </td>
+                    <th className="pl-4 pr-1 py-3 w-8">
+                      <Flag size={12} className="text-amber-500" />
+                    </th>
+                    <th className="px-3 py-3 font-semibold whitespace-nowrap">Usuario</th>
+                    <th className="px-3 py-3 font-semibold">ID</th>
+                    <th className="px-3 py-3 font-semibold">Rol</th>
+                    <th className="px-3 py-3 font-semibold">Estado</th>
+                    <th className="px-3 py-3 font-semibold">Género</th>
+                    <th className="px-3 py-3 font-semibold">Edad</th>
+                    <th className="px-3 py-3 font-semibold">País</th>
+                    <th className="px-3 py-3 font-semibold">Idioma</th>
+                    <th className="px-3 py-3 font-semibold">Conectado con</th>
+                    <th className="px-3 py-3 font-semibold text-right min-w-[12.5rem] whitespace-nowrap">Acciones</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-800">
+                  {paginatedUsers.map((user) => (
+                    <UserRow key={user.row_key} user={user} />
+                  ))}
+                  {sortedUsers.length === 0 && (
+                    <tr>
+                      <td colSpan={11} className="px-6 py-12 text-center">
+                        <div className="flex flex-col items-center gap-3 text-gray-500">
+                          {filterMode === 'favorites' ? (
+                            <>
+                              <Flag size={36} className="opacity-30 text-amber-500" />
+                              <p className="italic">No hay marcados que cumplan los filtros.</p>
+                              <button type="button" onClick={() => setFilterMode('all')} className="text-xs text-blue-400 hover:underline">
+                                Ver todos
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <Users size={36} className="opacity-30" />
+                              <p className="italic">
+                                {users.length === 0 && !loading
+                                  ? adminListError
+                                    ? 'No se cargó la lista. Revisa el aviso de arriba o pulsa refrescar.'
+                                    : 'No hay usuarios en la lista (comprueba el backend o la conexión).'
+                                  : 'No hay usuarios según estos criterios.'}
+                              </p>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
 
-          <div className="border-t border-gray-800 px-4 py-3 bg-gray-900/95 flex flex-wrap items-center justify-between gap-3 shrink-0">
-            <p className="text-xs text-gray-500">
+          <div className="border-t border-gray-800 px-3 sm:px-4 py-3 bg-gray-900/95 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center justify-between gap-3 shrink-0">
+            <p className="text-[11px] sm:text-xs text-gray-500 text-center sm:text-left">
               {totalFiltered === 0
                 ? 'Sin resultados'
                 : `Mostrando ${pageRangeStart}–${pageRangeEnd} de ${totalFiltered}`}
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center gap-2 flex-wrap">
               <button
                 type="button"
                 disabled={safePage <= 1}
+                aria-label="Página anterior"
                 onClick={() =>
                   setUserListPage((p) => {
                     const cur = Math.min(Math.max(1, p), totalPages);
                     return Math.max(1, cur - 1);
                   })
                 }
-                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-800 text-gray-200 hover:bg-gray-700 disabled:opacity-35 disabled:pointer-events-none border border-gray-700"
+                className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-800 text-gray-200 hover:bg-gray-700 disabled:opacity-35 disabled:pointer-events-none border border-gray-700"
               >
-                <ChevronLeft size={16} />
-                Anterior
+                <ChevronLeft size={16} className="shrink-0" />
+                <span className="hidden sm:inline">Anterior</span>
               </button>
-              <span className="text-xs text-gray-400 tabular-nums px-1">
+              <span className="text-[11px] sm:text-xs text-gray-400 tabular-nums px-1">
                 Página {safePage} / {totalPages}
               </span>
               <button
                 type="button"
                 disabled={safePage >= totalPages}
+                aria-label="Página siguiente"
                 onClick={() =>
                   setUserListPage((p) => {
                     const cur = Math.min(Math.max(1, p), totalPages);
                     return Math.min(totalPages, cur + 1);
                   })
                 }
-                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-800 text-gray-200 hover:bg-gray-700 disabled:opacity-35 disabled:pointer-events-none border border-gray-700"
+                className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-800 text-gray-200 hover:bg-gray-700 disabled:opacity-35 disabled:pointer-events-none border border-gray-700"
               >
-                Siguiente
-                <ChevronRight size={16} />
+                <span className="hidden sm:inline">Siguiente</span>
+                <ChevronRight size={16} className="shrink-0" />
               </button>
             </div>
           </div>
@@ -1234,9 +1457,9 @@ const AdminDashboard: React.FC = () => {
 
         <div
           ref={monitorPanelRef}
-          className="w-full xl:w-[min(92vw,560px)] shrink-0 bg-gray-900 rounded-2xl border border-gray-800 flex flex-col overflow-hidden max-h-[50vh] xl:max-h-none xl:min-h-0"
+          className="w-full lg:w-[min(92vw,560px)] shrink-0 bg-gray-900 rounded-2xl border border-gray-800 flex flex-col overflow-hidden max-h-[min(58vh,520px)] lg:max-h-none lg:min-h-0"
         >
-          <div className="p-3 md:p-4 border-b border-gray-800 bg-gray-800/50 flex justify-between items-center shrink-0 gap-2">
+          <div className="p-3 md:p-4 border-b border-gray-800 bg-gray-800/50 flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center shrink-0">
             <h3 className="font-bold flex items-center gap-2 text-purple-400 text-sm md:text-base min-w-0">
               <Video size={18} className="shrink-0" />{' '}
               <span className="truncate">Monitor activo</span>
@@ -1305,7 +1528,9 @@ const AdminDashboard: React.FC = () => {
           <div className="flex flex-col flex-1 min-h-0 min-w-0">
             <div
               className={`flex-1 bg-black grid min-h-0 min-w-0 ${
-                spyTarget && spyPeerSid ? 'grid-cols-2 divide-x divide-gray-800' : 'grid-cols-1'
+                spyTarget && spyPeerSid
+                  ? 'grid-cols-1 min-[420px]:grid-cols-2 divide-y min-[420px]:divide-y-0 min-[420px]:divide-x divide-gray-800'
+                  : 'grid-cols-1'
               }`}
             >
             {spyTarget ? (
@@ -1325,11 +1550,11 @@ const AdminDashboard: React.FC = () => {
                   {(() => {
                     const target = users.find((u) => u.sid === spyTarget);
                     return target ? (
-                      <div className="absolute bottom-2 left-2 right-2 bg-black/75 backdrop-blur text-white text-[11px] px-2 py-1.5 rounded-lg flex items-center gap-2 z-10">
+                      <div className="absolute bottom-2 left-2 right-2 bg-black/75 backdrop-blur text-white text-[11px] px-2 py-1.5 rounded-lg flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0 z-10">
                         <div className="w-5 h-5 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-[9px] font-bold shrink-0">
                           {(target.display_name || 'A')[0].toUpperCase()}
                         </div>
-                        <span className="font-medium truncate">{target.display_name}</span>
+                        <span className="font-medium truncate min-w-0 max-w-full">{target.display_name}</span>
                         <span className="text-[9px] text-gray-400 shrink-0">Monitoreado</span>
                         {userMatchesAnyFavorite(target, favorites) && (
                           <Flag size={11} className="text-amber-400 shrink-0" fill="currentColor" />
@@ -1350,11 +1575,11 @@ const AdminDashboard: React.FC = () => {
                     {(() => {
                       const peer = users.find((u) => u.sid === spyPeerSid);
                       return peer ? (
-                        <div className="absolute bottom-2 left-2 right-2 bg-black/75 backdrop-blur text-white text-[11px] px-2 py-1.5 rounded-lg flex items-center gap-2 z-10">
+                        <div className="absolute bottom-2 left-2 right-2 bg-black/75 backdrop-blur text-white text-[11px] px-2 py-1.5 rounded-lg flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0 z-10">
                           <div className="w-5 h-5 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-[9px] font-bold shrink-0">
                             {(peer.display_name || 'B')[0].toUpperCase()}
                           </div>
-                          <span className="font-medium truncate">{peer.display_name}</span>
+                          <span className="font-medium truncate min-w-0 max-w-full">{peer.display_name}</span>
                           <span className="text-[9px] text-gray-400 shrink-0">Interlocutor</span>
                           {userMatchesAnyFavorite(peer, favorites) && (
                             <Flag size={11} className="text-amber-400 shrink-0" fill="currentColor" />
@@ -1381,11 +1606,15 @@ const AdminDashboard: React.FC = () => {
             </div>
 
             {spyTarget && !monitorChatHidden && (
-              <div className="shrink-0 border-t border-gray-800 flex flex-col max-h-[min(28vh,168px)] min-h-[96px] bg-gray-950">
+              <div
+                className={`shrink-0 border-t border-gray-800 flex flex-col min-h-[96px] bg-gray-950 ${
+                  mdUp ? 'max-h-[min(28vh,168px)]' : 'max-h-[min(36vh,220px)]'
+                }`}
+              >
                 <MatchChatPanel
                   messages={monitorChatMessages}
                   readOnly
-                  variant="desktop"
+                  variant={mdUp ? 'desktop' : 'mobile'}
                   headerTitle="Chat en vivo"
                   emptyReadOnlyHint="Sin mensajes todavía en esta sesión."
                   onHideChat={() => setMonitorChatHidden(true)}
