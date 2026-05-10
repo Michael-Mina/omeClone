@@ -38,8 +38,12 @@ export const Router = () => {
     return role === 'superadmin' ? "/admin" : "/app";
   };
 
+  /** Coincide con `base` de Vite (GitHub Pages en subruta, p. ej. `/omeClone/`). */
+  const routerBasename =
+    import.meta.env.BASE_URL === '/' ? undefined : import.meta.env.BASE_URL.replace(/\/$/, '');
+
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={routerBasename}>
       <HydrationGate>
         <Routes>
           {/* If user is logged in, redirect to app or admin, else to login */}

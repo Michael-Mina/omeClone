@@ -4,10 +4,14 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
+  /** GitHub Pages u otro subdirectorio: `VITE_BASE_PATH=/omeClone/` (con o sin barras finales). */
+  const baseRaw = env.VITE_BASE_PATH?.trim()
+  const base = baseRaw ? (baseRaw.endsWith('/') ? baseRaw : `${baseRaw}/`) : '/'
   /** Mismo host/puerto que tu uvicorn; el proxy de desarrollo reenvía /api y /socket.io aquí */
   const apiTarget = env.VITE_BACKEND_URL?.trim() || 'http://127.0.0.1:8002'
 
   return {
+    base,
     plugins: [react()],
     server: {
       proxy: {
