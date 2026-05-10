@@ -14,10 +14,9 @@ from app.schemas.user import (
     UserProfileUpdate,
     NsfwStrikeResponse,
     OAuthGoogleIn,
-    OAuthFacebookIn,
     OAuthSignupExtras,
 )
-from app.services.oauth_verify import verify_google_credential, verify_facebook_access_token
+from app.services.oauth_verify import verify_google_credential
 from app.core.config import settings
 from app.core.security import verify_password, get_password_hash, create_access_token
 from app.core.age import is_at_least_age, MIN_REGISTER_AGE
@@ -99,7 +98,7 @@ def _create_oauth_user(
         if clash:
             raise HTTPException(
                 status_code=409,
-                detail="Ya existe una cuenta con este correo. Inicia sesión con correo y contraseña.",
+                detail="Ya existe una cuenta con este correo. Inicia sesión con Google usando ese correo.",
             )
     new_user = User(
         email=email,
@@ -128,13 +127,10 @@ router = APIRouter()
 
 @router.get("/oauth/providers")
 def oauth_providers():
-    """Expone IDs públicos para cargar los SDK en el cliente (Render / mismo backend)."""
+    """Expone el ID de cliente Google para el SDK en el front (Render / mismo backend)."""
     g_ids = settings.google_oauth_client_id_list
-    fb_id = (settings.FACEBOOK_APP_ID or "").strip()
-    fb_secret = (settings.FACEBOOK_APP_SECRET or "").strip()
     return {
         "google": {"enabled": bool(g_ids), "client_id": g_ids[0] if g_ids else None},
-        "facebook": {"enabled": bool(fb_id and fb_secret), "app_id": fb_id or None},
     }
 
 
@@ -182,46 +178,6 @@ def oauth_google(body: OAuthGoogleIn, db: Session = Depends(get_db)):
     )
     return _token_payload(user)
 
-
-@router.post("/oauth/facebook", response_model=Token)
-def oauth_facebook(body: OAuthFacebookIn, db: Session = Depends(get_db)):
-    if not (settings.FACEBOOK_APP_ID or "").strip() or not (settings.FACEBOOK_APP_SECRET or "").strip():
-        raise HTTPException(status_code=503, detail="Inicio de sesión con Facebook no está configurado")
-    try:
-        profile = verify_facebook_access_token(body.access_token)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-
-    fb_id = str(profile.get("id") or "")
-    if not fb_id:
-        raise HTTPException(status_code=400, detail="Perfil de Facebook incompleto")
-
-    email_raw = profile.get("email")
-    email = email_raw.strip() if isinstance(email_raw, str) and email_raw.strip() else None
-    name = (profile.get("name") or "").strip()
-
-    existing = db.query(User).filter(User.oauth_facebook_id == fb_id).first()
-    if existing:
-        _raise_if_login_blocked(existing)
-        return _token_payload(existing)
-
-    if _oauth_profile_incomplete(body):
-        raise _oauth_profile_required_exc()
-
-    _validate_oauth_profile(body)
-    assert body.birth_year is not None
-    user = _create_oauth_user(
-        db,
-        email=email,
-        display_name=name or f"User_{uuid.uuid4().hex[:6]}",
-        oauth_google_sub=None,
-        oauth_facebook_id=fb_id,
-        birth_year=body.birth_year,
-        gender=body.gender or "",
-        country=body.country or "",
-        language=body.language or "",
-    )
-    return _token_payload(user)
 
 @router.post("/register", response_model=UserResponse)
 def register(user_in: UserCreate, db: Session = Depends(get_db)):

@@ -31,10 +31,8 @@ class Settings(BaseSettings):
 
     DATABASE_URL: Optional[str] = None
 
-    # OAuth (Google: IDs públicos en cliente; Facebook: APP_ID público, APP_SECRET solo servidor)
+    # OAuth Google (IDs públicos; el front los obtiene de GET /api/auth/oauth/providers)
     GOOGLE_OAUTH_CLIENT_IDS: Optional[str] = None
-    FACEBOOK_APP_ID: Optional[str] = None
-    FACEBOOK_APP_SECRET: Optional[str] = None
 
     @property
     def google_oauth_client_id_list(self) -> List[str]:

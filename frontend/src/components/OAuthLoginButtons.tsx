@@ -18,12 +18,9 @@ export type OAuthTokenPayload = {
 
 type OAuthProviders = {
   google: { enabled: boolean; client_id: string | null };
-  facebook: { enabled: boolean; app_id: string | null };
 };
 
-type PendingOAuth =
-  | { provider: 'google'; credential: string }
-  | { provider: 'facebook'; access_token: string };
+type PendingOAuth = { provider: 'google'; credential: string };
 
 declare global {
   interface Window {
@@ -35,11 +32,6 @@ declare global {
         };
       };
     };
-    FB?: {
-      init: (cfg: Record<string, unknown>) => void;
-      login: (cb: (r: Record<string, unknown>) => void, opts?: Record<string, unknown>) => void;
-    };
-    fbAsyncInit?: () => void;
   }
 }
 
@@ -57,8 +49,6 @@ function detailMessage(data: unknown): string {
 
 const DISABLED_GOOGLE_HINT =
   'Google no está activo en el servidor. En Render (API), define GOOGLE_OAUTH_CLIENT_IDS con el ID de cliente OAuth Web y reinicia.';
-const DISABLED_FB_HINT =
-  'Facebook no está activo en el servidor. En Render (API), define FACEBOOK_APP_ID y FACEBOOK_APP_SECRET y reinicia.';
 
 export function OAuthLoginButtons({
   onSuccess,
@@ -68,12 +58,10 @@ export function OAuthLoginButtons({
   disabled?: boolean;
 }) {
   const [providers, setProviders] = useState<OAuthProviders | null>(null);
-  /** Evita ocultar la fila cuando el fetch falla o el backend no tiene OAuth. */
   const [providersLoaded, setProvidersLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [pending, setPending] = useState<PendingOAuth | null>(null);
-  const [fbReady, setFbReady] = useState(false);
 
   const googleBtnRef = useRef<HTMLDivElement>(null);
 
@@ -92,24 +80,20 @@ export function OAuthLoginButtons({
         const r = await fetch(apiUrl('/api/auth/oauth/providers'));
         if (cancelled) return;
         if (!r.ok) {
-          setProviders({
-            google: { enabled: false, client_id: null },
-            facebook: { enabled: false, app_id: null },
-          });
+          setProviders({ google: { enabled: false, client_id: null } });
           setProvidersLoaded(true);
           return;
         }
-        const j = (await r.json()) as OAuthProviders;
+        const j = (await r.json()) as OAuthProviders & Record<string, unknown>;
         if (!cancelled) {
-          setProviders(j);
+          setProviders({
+            google: j.google ?? { enabled: false, client_id: null },
+          });
           setProvidersLoaded(true);
         }
       } catch {
         if (!cancelled) {
-          setProviders({
-            google: { enabled: false, client_id: null },
-            facebook: { enabled: false, app_id: null },
-          });
+          setProviders({ google: { enabled: false, client_id: null } });
           setProvidersLoaded(true);
         }
       }
@@ -153,38 +137,6 @@ export function OAuthLoginButtons({
         }
         if (res.status === 400 && isProfileRequired(data)) {
           setPending({ provider: 'google', credential });
-          setShowProfile(true);
-          return;
-        }
-        alert(detailMessage(data));
-      } catch {
-        alert('Error de conexión');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [applyToken],
-  );
-
-  const postFacebook = useCallback(
-    async (access_token: string, extras?: Record<string, unknown>) => {
-      setLoading(true);
-      try {
-        const body: Record<string, unknown> = { access_token, ...extras };
-        const res = await fetch(apiUrl('/api/auth/oauth/facebook'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (res.ok) {
-          applyToken(data);
-          setShowProfile(false);
-          setPending(null);
-          return;
-        }
-        if (res.status === 400 && isProfileRequired(data)) {
-          setPending({ provider: 'facebook', access_token });
           setShowProfile(true);
           return;
         }
@@ -245,58 +197,6 @@ export function OAuthLoginButtons({
     };
   }, [providers?.google.enabled, providers?.google.client_id, postGoogle]);
 
-  useEffect(() => {
-    if (!providers?.facebook.enabled || !providers.facebook.app_id) return;
-
-    const appId = providers.facebook.app_id;
-
-    window.fbAsyncInit = () => {
-      if (!window.FB) return;
-      window.FB.init({
-        appId,
-        cookie: true,
-        xfbml: false,
-        version: 'v21.0',
-      });
-      setFbReady(true);
-    };
-
-    if (document.getElementById('facebook-jssdk')) {
-      if (window.FB) {
-        window.FB.init({
-          appId,
-          cookie: true,
-          xfbml: false,
-          version: 'v21.0',
-        });
-        setFbReady(true);
-      }
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.id = 'facebook-jssdk';
-    script.async = true;
-    script.crossOrigin = 'anonymous';
-    script.src = 'https://connect.facebook.net/es_ES/sdk.js';
-    document.body.appendChild(script);
-  }, [providers?.facebook.enabled, providers?.facebook.app_id]);
-
-  const handleFacebookClick = () => {
-    if (!window.FB || !fbReady) {
-      alert('Facebook SDK aún no está listo. Espera un momento e inténtalo de nuevo.');
-      return;
-    }
-    window.FB.login(
-      (response: Record<string, unknown>) => {
-        const auth = response.authResponse as { accessToken?: string } | undefined;
-        const token = auth?.accessToken;
-        if (token) void postFacebook(token);
-      },
-      { scope: 'public_profile,email' },
-    );
-  };
-
   const submitProfile = (e: React.FormEvent) => {
     e.preventDefault();
     if (!pending) return;
@@ -315,8 +215,7 @@ export function OAuthLoginButtons({
       language,
       adult_declaration: true,
     };
-    if (pending.provider === 'google') void postGoogle(pending.credential, extras);
-    else void postFacebook(pending.access_token, extras);
+    void postGoogle(pending.credential, extras);
   };
 
   const closeModal = () => {
@@ -325,17 +224,13 @@ export function OAuthLoginButtons({
   };
 
   const googleLive = Boolean(providers?.google.enabled && providers.google.client_id);
-  const facebookLive = Boolean(providers?.facebook.enabled && providers.facebook.app_id);
-  const showOAuthHint = providersLoaded && !googleLive && !facebookLive;
+  const showOAuthHint = providersLoaded && !googleLive;
 
   return (
     <>
       <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 justify-center">
         {!providersLoaded ? (
-          <>
-            <div className="h-10 w-[280px] max-w-full rounded-full bg-gray-800/80 animate-pulse" aria-hidden />
-            <div className="h-10 min-w-[200px] rounded-full bg-gray-800/80 animate-pulse" aria-hidden />
-          </>
+          <div className="h-10 w-[280px] max-w-full rounded-full bg-gray-800/80 animate-pulse" aria-hidden />
         ) : (
           <>
             {googleLive ? (
@@ -371,32 +266,13 @@ export function OAuthLoginButtons({
                 Continuar con Google
               </button>
             )}
-            {facebookLive ? (
-              <button
-                type="button"
-                disabled={disabled || loading || !fbReady}
-                onClick={handleFacebookClick}
-                className="inline-flex items-center justify-center gap-2 rounded-full border border-[#1877F2] bg-[#1877F2]/15 hover:bg-[#1877F2]/25 text-white text-sm font-semibold px-4 py-2 min-h-[40px] transition-colors disabled:opacity-40 disabled:pointer-events-none"
-              >
-                Continuar con Facebook
-              </button>
-            ) : (
-              <button
-                type="button"
-                disabled
-                title={DISABLED_FB_HINT}
-                className="inline-flex items-center justify-center gap-2 rounded-full border border-gray-600 bg-gray-800/50 text-gray-500 text-sm font-semibold px-4 py-2 min-h-[40px] cursor-not-allowed"
-              >
-                Continuar con Facebook
-              </button>
-            )}
           </>
         )}
       </div>
       {showOAuthHint && (
         <p className="mt-2 text-center text-[11px] text-amber-200/90 leading-snug max-w-md mx-auto px-1">
-          OAuth no configurado en la API: los botones están desactivados hasta que en Render definas las variables de
-          entorno (Google y/o Facebook) y vuelvas a desplegar.
+          Google OAuth no está configurado en la API: el botón está desactivado hasta que en Render definas{' '}
+          <span className="font-mono">GOOGLE_OAUTH_CLIENT_IDS</span> y vuelvas a desplegar.
         </p>
       )}
 

@@ -80,7 +80,7 @@ class UserProfileUpdate(BaseModel):
 
 
 class OAuthSignupExtras(BaseModel):
-    """Campos obligatorios para alta nueva vía Google/Facebook (mayores de edad + perfil mínimo)."""
+    """Campos obligatorios para alta nueva vía Google (mayores de edad + perfil mínimo)."""
 
     birth_year: Optional[int] = None
     gender: Optional[str] = None
@@ -91,7 +91,3 @@ class OAuthSignupExtras(BaseModel):
 
 class OAuthGoogleIn(OAuthSignupExtras):
     credential: str
-
-
-class OAuthFacebookIn(OAuthSignupExtras):
-    access_token: str
