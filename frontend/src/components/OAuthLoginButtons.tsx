@@ -157,7 +157,12 @@ export function OAuthLoginButtons({
     let cancelled = false;
 
     const renderGoogleButton = () => {
-      if (cancelled || !googleBtnRef.current || !window.google?.accounts?.id) return;
+      const host = googleBtnRef.current;
+      if (cancelled || !host || !window.google?.accounts?.id) return;
+      host.innerHTML = '';
+      const rectW = host.getBoundingClientRect().width;
+      const widthPx = Math.round(Math.min(440, Math.max(300, rectW > 80 ? rectW : 360)));
+
       window.google.accounts.id.initialize({
         client_id: clientId,
         callback: (resp: { credential?: string }) => {
@@ -165,29 +170,34 @@ export function OAuthLoginButtons({
         },
         auto_select: false,
       });
-      googleBtnRef.current.innerHTML = '';
-      window.google.accounts.id.renderButton(googleBtnRef.current, {
+      window.google.accounts.id.renderButton(host, {
         type: 'standard',
         theme: 'filled_black',
-        size: 'medium',
+        size: 'large',
         text: 'continue_with',
-        shape: 'pill',
+        shape: 'rectangular',
         locale: 'es',
-        width: 280,
+        width: widthPx,
+      });
+    };
+
+    const scheduleRender = () => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => renderGoogleButton());
       });
     };
 
     const existing = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
     if (existing && window.google?.accounts?.id) {
-      renderGoogleButton();
+      scheduleRender();
     } else if (existing) {
-      existing.addEventListener('load', renderGoogleButton);
+      existing.addEventListener('load', scheduleRender);
     } else {
       const script = document.createElement('script');
       script.src = 'https://accounts.google.com/gsi/client';
       script.async = true;
       script.defer = true;
-      script.onload = () => renderGoogleButton();
+      script.onload = () => scheduleRender();
       document.body.appendChild(script);
     }
 
@@ -228,14 +238,14 @@ export function OAuthLoginButtons({
 
   return (
     <>
-      <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 justify-center">
+      <div className="w-full flex flex-col items-stretch gap-2">
         {!providersLoaded ? (
-          <div className="h-10 w-[280px] max-w-full rounded-full bg-gray-800/80 animate-pulse" aria-hidden />
+          <div className="h-12 w-full rounded-xl bg-gray-800/80 animate-pulse" aria-hidden />
         ) : (
           <>
             {googleLive ? (
               <div
-                className={`flex justify-center min-h-[40px] ${disabled || loading ? 'opacity-50 pointer-events-none' : ''}`}
+                className={`w-full min-h-[48px] flex justify-center [&_*]:max-w-none ${disabled || loading ? 'opacity-50 pointer-events-none' : ''}`}
                 ref={googleBtnRef}
               />
             ) : (
@@ -243,7 +253,7 @@ export function OAuthLoginButtons({
                 type="button"
                 disabled
                 title={DISABLED_GOOGLE_HINT}
-                className="inline-flex items-center justify-center gap-2 rounded-full border border-gray-600 bg-gray-800/50 text-gray-500 text-sm font-semibold px-4 py-2 min-h-[40px] w-[280px] max-w-full cursor-not-allowed"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-gray-600 bg-gray-800/50 text-gray-500 text-sm font-semibold px-4 py-3.5 min-h-[48px] cursor-not-allowed"
               >
                 <svg className="w-[18px] h-[18px] shrink-0 opacity-60" viewBox="0 0 24 24" aria-hidden>
                   <path
