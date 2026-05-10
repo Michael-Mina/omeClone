@@ -2,6 +2,12 @@
 #
 # omeclone-api: tras el primer deploy, en el panel añade DATABASE_URL (Neon) si sync: false.
 # omeclone-web: añade VITE_BACKEND_URL = URL pública del API (HTTPS, sin barra final).
+#
+# Tras cambios en el front, si sigues viendo UI vieja (p. ej. botón Facebook ya eliminado en código):
+# Dashboard → servicio static omeclone-web → Headers (docs: render.com/docs/static-site-headers):
+#   Path: /      Name: Cache-Control  Value: no-cache, no-store, must-revalidate
+#   Path: /index.html  (mismo header)
+# Luego Clear build cache + Manual Deploy del sitio estático.
 
 services:
   - type: web
