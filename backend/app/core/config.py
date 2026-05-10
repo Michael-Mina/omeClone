@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import Optional, List
 
 
 def normalize_database_url(url: str) -> str:
@@ -30,6 +30,18 @@ class Settings(BaseSettings):
     POSTGRES_PORT: str = "5440"
 
     DATABASE_URL: Optional[str] = None
+
+    # OAuth (Google: IDs públicos en cliente; Facebook: APP_ID público, APP_SECRET solo servidor)
+    GOOGLE_OAUTH_CLIENT_IDS: Optional[str] = None
+    FACEBOOK_APP_ID: Optional[str] = None
+    FACEBOOK_APP_SECRET: Optional[str] = None
+
+    @property
+    def google_oauth_client_id_list(self) -> List[str]:
+        raw = (self.GOOGLE_OAUTH_CLIENT_IDS or "").strip()
+        if not raw:
+            return []
+        return [x.strip() for x in raw.split(",") if x.strip()]
 
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:

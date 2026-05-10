@@ -9,6 +9,7 @@ import {
   getBirthYearsDescending,
 } from '../data/profileOptions';
 import { apiUrl } from '../config/apiBase';
+import { OAuthLoginButtons, type OAuthTokenPayload } from '../components/OAuthLoginButtons';
 
 export default function Login() {
   const { setAuth } = useAppStore();
@@ -30,6 +31,13 @@ export default function Login() {
     setAnonCountry('');
     setAnonLanguage('');
     setAnonAdultConfirmed(false);
+  };
+
+  const handleOAuthSuccess = (data: OAuthTokenPayload) => {
+    const role = data.is_superuser ? 'superadmin' : 'user';
+    setAuth(String(data.user_id || 'user'), data.access_token, role, data.display_name || null, false, {
+      exemptFromAiCensorship: Boolean(data.exempt_from_ai_censorship),
+    });
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -132,7 +140,15 @@ export default function Login() {
           <p className="text-gray-400 mt-2 text-center text-sm">Conéctate con el mundo entero al instante.</p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        <OAuthLoginButtons onSuccess={handleOAuthSuccess} disabled={loading} />
+
+        <div className="mt-6 flex items-center justify-center space-x-4">
+          <div className="h-px bg-gray-800 flex-1"></div>
+          <span className="text-gray-500 text-xs font-semibold uppercase tracking-wider">O con correo</span>
+          <div className="h-px bg-gray-800 flex-1"></div>
+        </div>
+
+        <form onSubmit={handleLogin} className="space-y-4 mt-6">
           <div>
             <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
               Correo electrónico
@@ -168,7 +184,7 @@ export default function Login() {
 
         <div className="mt-6 flex items-center justify-center space-x-4">
           <div className="h-px bg-gray-800 flex-1"></div>
-          <span className="text-gray-500 text-xs font-semibold uppercase tracking-wider">O usa el acceso rápido</span>
+          <span className="text-gray-500 text-xs font-semibold uppercase tracking-wider">O entra sin cuenta</span>
           <div className="h-px bg-gray-800 flex-1"></div>
         </div>
 

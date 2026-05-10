@@ -9,8 +9,11 @@ import {
   MIN_AGE,
 } from '../data/profileOptions';
 import { apiUrl } from '../config/apiBase';
+import { OAuthLoginButtons, type OAuthTokenPayload } from '../components/OAuthLoginButtons';
+import { useAppStore } from '../store/useAppStore';
 
 export default function Register() {
+  const { setAuth } = useAppStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -23,6 +26,13 @@ export default function Register() {
   const navigate = useNavigate();
 
   const birthYears = getBirthYearsDescending();
+
+  const handleOAuthSuccess = (data: OAuthTokenPayload) => {
+    const role = data.is_superuser ? 'superadmin' : 'user';
+    setAuth(String(data.user_id || 'user'), data.access_token, role, data.display_name || null, false, {
+      exemptFromAiCensorship: Boolean(data.exempt_from_ai_censorship),
+    });
+  };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,6 +87,14 @@ export default function Register() {
           </div>
           <h2 className="text-3xl font-bold text-white text-center">Crea tu Cuenta</h2>
           <p className="text-gray-400 mt-2 text-center text-sm">Empieza a conocer personas increíbles.</p>
+        </div>
+
+        <OAuthLoginButtons onSuccess={handleOAuthSuccess} disabled={loading} />
+
+        <div className="mt-5 mb-2 flex items-center justify-center space-x-4">
+          <div className="h-px bg-gray-800 flex-1"></div>
+          <span className="text-gray-500 text-xs font-semibold uppercase tracking-wider">O con correo</span>
+          <div className="h-px bg-gray-800 flex-1"></div>
         </div>
 
         <form onSubmit={handleRegister} className="space-y-4">

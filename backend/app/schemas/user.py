@@ -77,3 +77,21 @@ class UserProfileUpdate(BaseModel):
     birth_year: Optional[int] = None
     current_password: Optional[str] = None
     new_password: Optional[str] = None
+
+
+class OAuthSignupExtras(BaseModel):
+    """Campos obligatorios para alta nueva vía Google/Facebook (mayores de edad + perfil mínimo)."""
+
+    birth_year: Optional[int] = None
+    gender: Optional[str] = None
+    country: Optional[str] = None
+    language: Optional[str] = None
+    adult_declaration: bool = False
+
+
+class OAuthGoogleIn(OAuthSignupExtras):
+    credential: str
+
+
+class OAuthFacebookIn(OAuthSignupExtras):
+    access_token: str

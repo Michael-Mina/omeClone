@@ -8,6 +8,9 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=True) # Nullable for anonymous
     hashed_password = Column(String, nullable=True)
+    # OAuth (sub/id estable del proveedor; login sin contraseña local)
+    oauth_google_sub = Column(String(255), unique=True, index=True, nullable=True)
+    oauth_facebook_id = Column(String(255), unique=True, index=True, nullable=True)
     is_active = Column(Boolean, default=True)
     is_anonymous = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
