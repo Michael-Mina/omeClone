@@ -1,9 +1,7 @@
 import { socket } from '../sockets/socket';
-import { useAppStore } from '../store/useAppStore';
+import { resolveUserIdForIdentify } from './resolveSocketUserId';
 
-/** userId vacío no es nullish: hay que usar trim + fallback a socket.id para cola e identify. */
+/** Misma resolución que `identify`: evita usar solo socket.id si ya hay JWT/persist con `sub` o userId. */
 export function resolveMatchmakingUserId(): string {
-  const raw = useAppStore.getState().userId?.trim();
-  if (raw) return raw;
-  return socket.id ?? 'anonymous';
+  return resolveUserIdForIdentify(socket.id);
 }

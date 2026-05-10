@@ -31,6 +31,7 @@ import {
   languageLabel,
 } from '../data/profileOptions';
 import { apiUrl, getBackendOrigin } from '../config/apiBase';
+import { resolveUserIdForIdentify } from '../utils/resolveSocketUserId';
 import { startMonitorRecording } from '../utils/adminMonitorRecorder';
 import { MatchChatPanel, type ChatLine } from '../components/MatchChatPanel';
 import { translateForChatDisplay, resolveTranslateTargetLang } from '../utils/chatTranslate';
@@ -142,7 +143,7 @@ function statusTextClass(u: DashboardUser): string {
 }
 
 const AdminDashboard: React.FC = () => {
-  const { setAuth, userId, language } = useAppStore();
+  const { setAuth, userId, language, token, displayName, role } = useAppStore();
   const navigate = useNavigate();
   const [users, setUsers] = useState<DashboardUser[]>([]);
   const [loading, setLoading] = useState(false);
@@ -296,11 +297,11 @@ const AdminDashboard: React.FC = () => {
     if (!socket.connected) socket.connect();
 
     const onConnect = () => {
-      const { userId: uid, role, displayName } = useAppStore.getState();
+      const { role: r, displayName: dn } = useAppStore.getState();
       socket.emit('identify', {
-        user_id: uid,
-        role,
-        display_name: displayName,
+        user_id: resolveUserIdForIdentify(socket.id),
+        role: r,
+        display_name: dn,
         gender: null,
         country: null,
         language: null,
@@ -373,6 +374,20 @@ const AdminDashboard: React.FC = () => {
       spyPcsRef.current = {};
     };
   }, []);
+
+  useEffect(() => {
+    if (!socket.connected) return;
+    socket.emit('identify', {
+      user_id: resolveUserIdForIdentify(socket.id),
+      role,
+      display_name: displayName,
+      gender: null,
+      country: null,
+      language: null,
+      birth_year: null,
+      is_anonymous: false,
+    });
+  }, [userId, token, displayName, role]);
 
   useEffect(() => {
     setMonitorChatMessages([]);

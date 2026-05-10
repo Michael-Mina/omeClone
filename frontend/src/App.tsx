@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { socket } from './sockets/socket';
 import { resolveMatchmakingUserId } from './utils/matchmakingUserId';
+import { resolveUserIdForIdentify } from './utils/resolveSocketUserId';
 import { useAppStore } from './store/useAppStore';
 import { useNavigate } from 'react-router-dom';
 import { useWebRTC } from './hooks/useWebRTC';
@@ -50,6 +51,9 @@ function App() {
     stopMatch,
     resetMatch,
     language,
+    gender,
+    country,
+    birthYear,
   } = useAppStore();
   const {
     localVideoRef,
@@ -210,6 +214,35 @@ function App() {
     void startLocalStream();
   }, [startLocalStream]);
 
+  const emitSocketIdentify = useCallback(() => {
+    if (!socket.connected) return;
+    const {
+      role: currentRole,
+      displayName: currentName,
+      gender: g,
+      country: c,
+      language: lang,
+      birthYear: by,
+      isAnonymous: anon,
+    } = useAppStore.getState();
+    const identifiedAs = resolveUserIdForIdentify(socket.id);
+    socket.emit('identify', {
+      user_id: identifiedAs,
+      role: currentRole,
+      display_name: currentName,
+      gender: g,
+      country: c,
+      language: lang,
+      birth_year: by,
+      is_anonymous: anon,
+    });
+  }, []);
+
+  /** Tras login o rehidratación: el socket ya puede estar conectado sin volver a disparar `connect`. */
+  useEffect(() => {
+    emitSocketIdentify();
+  }, [userId, token, displayName, isAnonymous, role, language, gender, country, birthYear, emitSocketIdentify]);
+
   /** Evita dos resume seguidos sin desconexión (React Strict Mode / mismo socket.id). */
   const lastResumeSocketIdRef = useRef<string | null>(null);
 
@@ -219,33 +252,15 @@ function App() {
     }
 
     const onConnect = () => {
-      const {
-        userId: currentUserId,
-        role: currentRole,
-        displayName: currentName,
-        gender: g,
-        country: c,
-        language: lang,
-        birthYear: by,
-        isAnonymous: anon,
-      } = useAppStore.getState();
-      const identifiedAs = currentUserId?.trim() || socket.id || null;
+      const { role: currentRole, isAnonymous: anon } = useAppStore.getState();
+      const identifiedAs = resolveUserIdForIdentify(socket.id);
       console.log(
         'Conectado al servidor, identificando como:',
         identifiedAs,
         currentRole,
         anon ? '(anónimo)' : ''
       );
-      socket.emit('identify', {
-        user_id: identifiedAs,
-        role: currentRole,
-        display_name: currentName,
-        gender: g,
-        country: c,
-        language: lang,
-        birth_year: by,
-        is_anonymous: anon,
-      });
+      emitSocketIdentify();
       const sid = socket.id ?? null;
       if (lastResumeSocketIdRef.current === sid) {
         return;
