@@ -1,0 +1,38 @@
+# Entorno / secretos (nunca subir)
+.env
+.env.*
+!.env.example
+
+# Python
+backend/venv/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.so
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+.eggs/
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+
+# Bases de datos locales (desarrollo)
+*.db
+*.sqlite3
+
+# Logs y temporales
+*.log
+.npm-cache/
+
+# SO / IDE
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+*.swo
+
+# Android / Gradle (extras fuera del android/.gitignore del proyecto)
+local.properties
