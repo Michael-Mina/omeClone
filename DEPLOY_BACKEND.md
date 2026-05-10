@@ -38,8 +38,10 @@ python create_superuser.py admin@tudominio.com TuPasswordSegura
 
 ### E) Frontend
 
-En Cloudflare Pages / build local:
+En Render Static Site, Cloudflare Pages o build local:
 
 - `VITE_BACKEND_URL=https://TU-URL.onrender.com` (sin barra final).
+
+Guía del front en Render: **`DEPLOY_FRONTEND_RENDER.md`**.
 
 **Nota:** El plan gratuito de Render puede **enfriar** el servicio tras inactividad; el primer request tarda ~1 minuto.
