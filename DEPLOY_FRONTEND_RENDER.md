@@ -2,6 +2,10 @@
 
 El front es un build **Vite/React**; Render lo publica como **Static Site** (CDN, HTTPS).
 
+### Si el build sale con **exit 1**
+
+Muchas veces Render exporta **`NODE_ENV=production`** antes de `npm ci`, y npm **no instala `devDependencies`** (falta Vite, TypeScript, etc.). Usa en el build: **`npm ci --include=dev`** (ya va en `render.yaml` y en la tabla de abajo).
+
 ## Desde el Blueprint del repo (`render.yaml`)
 
 El archivo `render.yaml` ya incluye el servicio **`omeclone-web`** (`runtime: static`).
@@ -22,7 +26,7 @@ El archivo `render.yaml` ya incluye el servicio **`omeclone-web`** (`runtime: st
    | Campo | Valor |
    |--------|--------|
    | **Root Directory** | `frontend` |
-   | **Build Command** | `npm ci && npm run build:cloudflare` |
+   | **Build Command** | `npm ci --include=dev && env VITE_BASE_PATH=/ npm run build` |
    | **Publish Directory** | `dist` |
 
 3. **Environment** (Variables):
