@@ -35,6 +35,34 @@ declare global {
   }
 }
 
+/** Misma base que «Entrar como Anónimo» en Login.tsx */
+const BTN_MATCH_ANONYMOUS =
+  'w-full bg-gray-800/80 hover:bg-gray-700 text-white font-medium py-3.5 px-4 rounded-xl border border-gray-700 transition-all shadow-md flex items-center justify-center gap-2';
+
+/** Logo Google multicolor oficial (sin caja blanca), sobre fondo oscuro. */
+function GoogleMark({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden>
+      <path
+        fill="#4285F4"
+        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+      />
+    </svg>
+  );
+}
+
 function isProfileRequired(data: unknown): boolean {
   const d = (data as { detail?: { code?: string } | string }).detail;
   return typeof d === 'object' && d !== null && 'code' in d && (d as { code: string }).code === 'oauth_profile_required';
@@ -50,9 +78,6 @@ function detailMessage(data: unknown): string {
 const DISABLED_GOOGLE_HINT =
   'Google no está activo en el servidor. En Render (API), define GOOGLE_OAUTH_CLIENT_IDS con el ID de cliente OAuth Web y reinicia.';
 
-/** El iframe de Google sale más bajo que `py-3.5`; escalamos para alinearlo con «Entrar como Anónimo». */
-const GOOGLE_BTN_SCALE = 1.22;
-
 export function OAuthLoginButtons({
   onSuccess,
   disabled,
@@ -65,9 +90,11 @@ export function OAuthLoginButtons({
   const [loading, setLoading] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [pending, setPending] = useState<PendingOAuth | null>(null);
+  const [gsiReady, setGsiReady] = useState(false);
 
-  const googleWrapRef = useRef<HTMLDivElement>(null);
-  const googleBtnRef = useRef<HTMLDivElement>(null);
+  /** Contenedor para medir ancho y alinear capa decorativa + GIS encima. */
+  const googleOverlayWrapRef = useRef<HTMLDivElement>(null);
+  const googleHiddenHostRef = useRef<HTMLDivElement>(null);
 
   const [birthYear, setBirthYear] = useState(0);
   const [gender, setGender] = useState('');
@@ -155,20 +182,22 @@ export function OAuthLoginButtons({
   );
 
   useEffect(() => {
-    if (!providers?.google.enabled || !providers.google.client_id) return;
+    if (!providers?.google.enabled || !providers.google.client_id) {
+      setGsiReady(false);
+      return;
+    }
 
     const clientId = providers.google.client_id;
     let cancelled = false;
 
-    const renderGoogleButton = () => {
-      const host = googleBtnRef.current;
-      const wrap = googleWrapRef.current;
+    const renderHiddenGoogleButton = () => {
+      const host = googleHiddenHostRef.current;
       if (cancelled || !host || !window.google?.accounts?.id) return;
       host.innerHTML = '';
-      const containerW = wrap?.getBoundingClientRect().width ?? 400;
-      const widthPx = Math.round(
-        Math.min(520, Math.max(280, containerW / GOOGLE_BTN_SCALE)),
-      );
+      setGsiReady(false);
+
+      const wrapW = googleOverlayWrapRef.current?.offsetWidth ?? 360;
+      const widthPx = Math.min(520, Math.max(260, Math.round(wrapW)));
 
       window.google.accounts.id.initialize({
         client_id: clientId,
@@ -177,6 +206,7 @@ export function OAuthLoginButtons({
         },
         auto_select: false,
       });
+
       window.google.accounts.id.renderButton(host, {
         type: 'standard',
         theme: 'filled_black',
@@ -186,11 +216,15 @@ export function OAuthLoginButtons({
         locale: 'es',
         width: widthPx,
       });
+
+      window.setTimeout(() => {
+        if (!cancelled) setGsiReady(true);
+      }, 400);
     };
 
     const scheduleRender = () => {
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => renderGoogleButton());
+        requestAnimationFrame(() => renderHiddenGoogleButton());
       });
     };
 
@@ -210,16 +244,10 @@ export function OAuthLoginButtons({
 
     return () => {
       cancelled = true;
-      if (googleBtnRef.current) googleBtnRef.current.innerHTML = '';
+      setGsiReady(false);
+      if (googleHiddenHostRef.current) googleHiddenHostRef.current.innerHTML = '';
     };
   }, [providers?.google.enabled, providers?.google.client_id, postGoogle]);
-
-  const googleScaleWrapStyle = {
-    transform: `scale(${GOOGLE_BTN_SCALE})` as const,
-    transformOrigin: 'top center' as const,
-    width: `${100 / GOOGLE_BTN_SCALE}%`,
-    maxWidth: `${100 / GOOGLE_BTN_SCALE}%`,
-  };
 
   const submitProfile = (e: React.FormEvent) => {
     e.preventDefault();
@@ -250,6 +278,8 @@ export function OAuthLoginButtons({
   const googleLive = Boolean(providers?.google.enabled && providers.google.client_id);
   const showOAuthHint = providersLoaded && !googleLive;
 
+  const overlayBlocked = disabled || loading || !gsiReady;
+
   return (
     <>
       <div className="w-full flex flex-col items-stretch gap-2">
@@ -259,38 +289,28 @@ export function OAuthLoginButtons({
           <>
             {googleLive ? (
               <div
-                ref={googleWrapRef}
-                className={`w-full min-h-[52px] pb-2 flex justify-center overflow-visible ${disabled || loading ? 'opacity-50 pointer-events-none' : ''}`}
+                ref={googleOverlayWrapRef}
+                className={`relative w-full min-h-[52px] ${disabled || loading ? 'opacity-50' : ''}`}
               >
-                <div className="origin-top flex justify-center" style={googleScaleWrapStyle}>
-                  <div ref={googleBtnRef} className="w-full flex justify-center [&_*]:max-w-none" />
+                {/* Misma pintura que «Anónimo» (solo decoración; el clic lo captura GIS encima). */}
+                <div className={`${BTN_MATCH_ANONYMOUS} pointer-events-none select-none`} aria-hidden>
+                  <GoogleMark className="h-5 w-5 shrink-0" />
+                  Continuar con Google
                 </div>
+                <div
+                  ref={googleHiddenHostRef}
+                  className={`absolute inset-0 z-10 flex min-h-[52px] w-full items-center justify-center opacity-0 [&_*]:max-w-none ${overlayBlocked ? 'pointer-events-none' : ''}`}
+                  aria-hidden
+                />
               </div>
             ) : (
               <button
                 type="button"
                 disabled
                 title={DISABLED_GOOGLE_HINT}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-gray-600 bg-gray-800/50 text-gray-500 text-sm font-semibold px-4 py-3.5 min-h-[52px] cursor-not-allowed"
+                className={`${BTN_MATCH_ANONYMOUS} opacity-60 cursor-not-allowed`}
               >
-                <svg className="w-[18px] h-[18px] shrink-0 opacity-60" viewBox="0 0 24 24" aria-hidden>
-                  <path
-                    fill="currentColor"
-                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                  />
-                </svg>
+                <GoogleMark className="h-5 w-5 shrink-0 opacity-70" />
                 Continuar con Google
               </button>
             )}
