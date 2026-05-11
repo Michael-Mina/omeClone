@@ -50,6 +50,9 @@ function detailMessage(data: unknown): string {
 const DISABLED_GOOGLE_HINT =
   'Google no está activo en el servidor. En Render (API), define GOOGLE_OAUTH_CLIENT_IDS con el ID de cliente OAuth Web y reinicia.';
 
+/** El iframe de Google sale más bajo que `py-3.5`; escalamos para alinearlo con «Entrar como Anónimo». */
+const GOOGLE_BTN_SCALE = 1.22;
+
 export function OAuthLoginButtons({
   onSuccess,
   disabled,
@@ -63,6 +66,7 @@ export function OAuthLoginButtons({
   const [showProfile, setShowProfile] = useState(false);
   const [pending, setPending] = useState<PendingOAuth | null>(null);
 
+  const googleWrapRef = useRef<HTMLDivElement>(null);
   const googleBtnRef = useRef<HTMLDivElement>(null);
 
   const [birthYear, setBirthYear] = useState(0);
@@ -158,10 +162,13 @@ export function OAuthLoginButtons({
 
     const renderGoogleButton = () => {
       const host = googleBtnRef.current;
+      const wrap = googleWrapRef.current;
       if (cancelled || !host || !window.google?.accounts?.id) return;
       host.innerHTML = '';
-      const rectW = host.getBoundingClientRect().width;
-      const widthPx = Math.round(Math.min(440, Math.max(300, rectW > 80 ? rectW : 360)));
+      const containerW = wrap?.getBoundingClientRect().width ?? 400;
+      const widthPx = Math.round(
+        Math.min(520, Math.max(280, containerW / GOOGLE_BTN_SCALE)),
+      );
 
       window.google.accounts.id.initialize({
         client_id: clientId,
@@ -207,6 +214,13 @@ export function OAuthLoginButtons({
     };
   }, [providers?.google.enabled, providers?.google.client_id, postGoogle]);
 
+  const googleScaleWrapStyle = {
+    transform: `scale(${GOOGLE_BTN_SCALE})` as const,
+    transformOrigin: 'top center' as const,
+    width: `${100 / GOOGLE_BTN_SCALE}%`,
+    maxWidth: `${100 / GOOGLE_BTN_SCALE}%`,
+  };
+
   const submitProfile = (e: React.FormEvent) => {
     e.preventDefault();
     if (!pending) return;
@@ -240,20 +254,24 @@ export function OAuthLoginButtons({
     <>
       <div className="w-full flex flex-col items-stretch gap-2">
         {!providersLoaded ? (
-          <div className="h-12 w-full rounded-xl bg-gray-800/80 animate-pulse" aria-hidden />
+          <div className="h-[52px] w-full rounded-xl bg-gray-800/80 animate-pulse" aria-hidden />
         ) : (
           <>
             {googleLive ? (
               <div
-                className={`w-full min-h-[48px] flex justify-center [&_*]:max-w-none ${disabled || loading ? 'opacity-50 pointer-events-none' : ''}`}
-                ref={googleBtnRef}
-              />
+                ref={googleWrapRef}
+                className={`w-full min-h-[52px] pb-2 flex justify-center overflow-visible ${disabled || loading ? 'opacity-50 pointer-events-none' : ''}`}
+              >
+                <div className="origin-top flex justify-center" style={googleScaleWrapStyle}>
+                  <div ref={googleBtnRef} className="w-full flex justify-center [&_*]:max-w-none" />
+                </div>
+              </div>
             ) : (
               <button
                 type="button"
                 disabled
                 title={DISABLED_GOOGLE_HINT}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-gray-600 bg-gray-800/50 text-gray-500 text-sm font-semibold px-4 py-3.5 min-h-[48px] cursor-not-allowed"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-gray-600 bg-gray-800/50 text-gray-500 text-sm font-semibold px-4 py-3.5 min-h-[52px] cursor-not-allowed"
               >
                 <svg className="w-[18px] h-[18px] shrink-0 opacity-60" viewBox="0 0 24 24" aria-hidden>
                   <path
