@@ -36,8 +36,13 @@ declare global {
 }
 
 /** Misma base que «Entrar como Anónimo» en Login.tsx */
-const BTN_MATCH_ANONYMOUS =
-  'w-full bg-gray-800/80 hover:bg-gray-700 text-white font-medium py-3.5 px-4 rounded-xl border border-gray-700 transition-all shadow-md flex items-center justify-center gap-2';
+const BTN_MATCH_ANONYMOUS_BASE =
+  'w-full bg-gray-800/80 text-white font-medium py-3.5 px-4 rounded-xl border border-gray-700 transition-all shadow-md flex items-center justify-center gap-2';
+
+const BTN_MATCH_ANONYMOUS = `${BTN_MATCH_ANONYMOUS_BASE} hover:bg-gray-700`;
+
+/** Capa visible bajo el iframe GIS: el hover lo recibe el grupo (el usuario pasa el ratón por la capa invisible). */
+const BTN_GOOGLE_UNDERLAY = `${BTN_MATCH_ANONYMOUS_BASE} pointer-events-none select-none transition-colors group-hover:bg-gray-700`;
 
 /** Logo Google multicolor oficial (sin caja blanca), sobre fondo oscuro. */
 function GoogleMark({ className }: { className?: string }) {
@@ -290,10 +295,10 @@ export function OAuthLoginButtons({
             {googleLive ? (
               <div
                 ref={googleOverlayWrapRef}
-                className={`relative w-full min-h-[52px] ${disabled || loading ? 'opacity-50' : ''}`}
+                className={`group relative w-full min-h-[52px] ${disabled || loading ? 'opacity-50' : ''}`}
               >
                 {/* Misma pintura que «Anónimo» (solo decoración; el clic lo captura GIS encima). */}
-                <div className={`${BTN_MATCH_ANONYMOUS} pointer-events-none select-none`} aria-hidden>
+                <div className={BTN_GOOGLE_UNDERLAY} aria-hidden>
                   <GoogleMark className="h-5 w-5 shrink-0" />
                   Continuar con Google
                 </div>
