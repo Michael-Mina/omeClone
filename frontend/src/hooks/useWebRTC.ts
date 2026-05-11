@@ -23,13 +23,14 @@ const AUDIO_CONSTRAINTS: MediaTrackConstraints = {
   sampleRate: { ideal: 48000 },
 };
 
+/** 720p@30: menos píxeles que 1080p → codificación y envío más estables sin perder nitidez perceptible en webcam. */
 const VIDEO_CAPTURE_BASE: Pick<
   MediaTrackConstraints,
   'width' | 'height' | 'frameRate'
 > = {
-  width: { ideal: 1920 },
-  height: { ideal: 1080 },
-  frameRate: { ideal: 30, max: 60 },
+  width: { ideal: 1280 },
+  height: { ideal: 720 },
+  frameRate: { ideal: 30, max: 30 },
 };
 
 /** Infiero frontal/trasera desde la etiqueta del SO (móvil suele exponer “facing back”, etc.). */
@@ -95,9 +96,19 @@ async function buildMediaConstraintsAsync(facing: 'user' | 'environment'): Promi
   };
 }
 
-/** Techo razonable para H.264/VP8/VP9 en 1080p; la capa de transporte reduce si la red es mala. */
-const OUTBOUND_VIDEO_MAX_BITRATE_BPS = 4_000_000;
+/** Techo para ~720p de alta calidad; GCC baja solo si hace falta; evita picos innecesarios vs 1080p+4Mbps. */
+const OUTBOUND_VIDEO_MAX_BITRATE_BPS = 3_200_000;
 const OUTBOUND_AUDIO_MAX_BITRATE_BPS = 128_000;
+
+function applyVideoTrackHints(track: MediaStreamTrack) {
+  try {
+    if (track.kind === 'video' && 'contentHint' in track) {
+      (track as MediaStreamTrack & { contentHint?: string }).contentHint = 'motion';
+    }
+  } catch {
+    /* noop */
+  }
+}
 
 async function applyOutboundSenderQuality(sender: RTCRtpSender, kind: MediaStreamTrack['kind']) {
   try {
@@ -109,7 +120,8 @@ async function applyOutboundSenderQuality(sender: RTCRtpSender, kind: MediaStrea
     if (kind === 'video') {
       enc.maxBitrate = OUTBOUND_VIDEO_MAX_BITRATE_BPS;
       enc.scaleResolutionDownBy = 1;
-      params.degradationPreference = 'maintain-resolution';
+      /** Prioriza fps fluido ante congestión (mejor sensación “en vivo” que mantener 720p estático a 8fps). */
+      params.degradationPreference = 'maintain-framerate';
     } else if (kind === 'audio') {
       enc.maxBitrate = OUTBOUND_AUDIO_MAX_BITRATE_BPS;
     }
@@ -212,6 +224,7 @@ export const useWebRTC = () => {
           console.warn('[WebRTC] No se pudo añadir pista de audio; la llamada seguirá solo con vídeo.');
         }
       }
+      stream.getVideoTracks().forEach(applyVideoTrackHints);
       localStreamRef.current = stream;
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
@@ -290,6 +303,7 @@ export const useWebRTC = () => {
       }
       const newVideo = vStream.getVideoTracks()[0];
       if (!newVideo) throw new Error('Sin pista de vídeo');
+      applyVideoTrackHints(newVideo);
 
       const newStream = new MediaStream([...audioTracks, newVideo]);
       localStreamRef.current = newStream;
@@ -301,7 +315,10 @@ export const useWebRTC = () => {
       const pc = peerConnectionRef.current;
       if (pc) {
         const sender = pc.getSenders().find((s) => s.track?.kind === 'video');
-        if (sender) await sender.replaceTrack(newVideo);
+        if (sender) {
+          await sender.replaceTrack(newVideo);
+          void applyOutboundSenderQuality(sender, 'video');
+        }
       }
 
       if (next === 'environment' && torchOn) {
@@ -320,8 +337,12 @@ export const useWebRTC = () => {
         const pc = peerConnectionRef.current;
         const vt = fallback.getVideoTracks()[0];
         if (pc && vt) {
+          applyVideoTrackHints(vt);
           const sender = pc.getSenders().find((s) => s.track?.kind === 'video');
-          if (sender) await sender.replaceTrack(vt);
+          if (sender) {
+            await sender.replaceTrack(vt);
+            void applyOutboundSenderQuality(sender, 'video');
+          }
         }
       } catch {
         /* ignore */
