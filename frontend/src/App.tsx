@@ -20,7 +20,7 @@ import {
 } from './utils/chatTranslate';
 import { languageLabel } from './data/profileOptions';
 import { apiUrl } from './config/apiBase';
-import { ensureFreshToken } from './utils/authSession';
+import { ensureValidAccessToken } from './utils/authSession';
 import { useChatTranslateMode } from './hooks/useChatTranslateMode';
 import { useMdUp } from './hooks/useMdUp';
 import { useMatchFloatingWindow } from './hooks/useMatchFloatingWindow';
@@ -312,7 +312,7 @@ function App() {
   /** Renueva JWT caducado y sincroniza exenciones con el servidor. */
   useEffect(() => {
     if (!token?.trim()) return;
-    void ensureFreshToken();
+    void ensureValidAccessToken();
   }, [token]);
 
   /** Respaldo: poller ligero si el socket no entregó `exemptions_updated`. */
@@ -321,7 +321,7 @@ function App() {
     if (!tok) return;
     const syncExemptionsFromMe = async () => {
       try {
-        const fresh = (await ensureFreshToken()) ?? tok;
+        const fresh = (await ensureValidAccessToken()) ?? tok;
         const r = await fetch(apiUrl('/api/auth/me'), { headers: { Authorization: `Bearer ${fresh}` } });
         if (!r.ok) return;
         const j = (await r.json()) as { exempt_from_ai_censorship?: unknown };

@@ -14,6 +14,23 @@ async function probeToken(token: string): Promise<boolean> {
   }
 }
 
+async function tryJwtRefresh(token: string): Promise<string | null> {
+  try {
+    const res = await fetch(apiUrl('/api/auth/refresh'), {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { access_token?: string };
+    const next = typeof data.access_token === 'string' ? data.access_token.trim() : '';
+    if (!next) return null;
+    useAppStore.getState().updateAccessToken(next);
+    return next;
+  } catch {
+    return null;
+  }
+}
+
 async function refreshAnonymousSession(): Promise<string | null> {
   const st = useAppStore.getState();
   if (
@@ -70,34 +87,49 @@ async function refreshAnonymousSession(): Promise<string | null> {
   }
 }
 
-/**
- * Devuelve un JWT válido para llamadas REST.
- * Si el anónimo fue borrado en el servidor (p. ej. tras cerrar pestaña), crea uno nuevo con el perfil guardado.
- */
-export async function ensureValidAccessToken(options?: {
-  forceRefresh?: boolean;
-}): Promise<string | null> {
-  const st = useAppStore.getState();
-  const current = st.token?.trim();
-  if (!current) return null;
-
+async function renewAccessToken(
+  current: string,
+  options?: { forceRefresh?: boolean }
+): Promise<string | null> {
   if (!options?.forceRefresh && (await probeToken(current))) {
     return current;
   }
 
-  if (!st.isAnonymous) {
-    useAppStore.getState().setAuth('', '', 'user', null, false);
-    return null;
+  const refreshed = await tryJwtRefresh(current);
+  if (refreshed && (await probeToken(refreshed))) {
+    return refreshed;
   }
 
+  const st = useAppStore.getState();
+  if (st.isAnonymous) {
+    return refreshAnonymousSession();
+  }
+
+  return null;
+}
+
+/**
+ * Devuelve un JWT válido para llamadas REST.
+ * Renueva con /auth/refresh o, si el anónimo fue borrado, vuelve a crear sesión.
+ */
+export async function ensureValidAccessToken(options?: {
+  forceRefresh?: boolean;
+}): Promise<string | null> {
+  const current = useAppStore.getState().token?.trim();
+  if (!current) return null;
+
   if (!refreshPromise) {
-    refreshPromise = refreshAnonymousSession().finally(() => {
+    refreshPromise = renewAccessToken(current, options).finally(() => {
       refreshPromise = null;
     });
   }
+
   const fresh = await refreshPromise;
   if (fresh) return fresh;
 
   useAppStore.getState().setAuth('', '', 'user', null, false);
   return null;
 }
+
+/** Alias usado en App.tsx (misma lógica que ensureValidAccessToken). */
+export const ensureFreshToken = ensureValidAccessToken;
