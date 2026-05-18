@@ -1,7 +1,7 @@
 import asyncio
 import time
 import socketio
-from app.services.matchmaking import MatchmakingService
+from app.services.matchmaking import MatchmakingService, normalize_match_zone
 
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
 
@@ -65,6 +65,7 @@ async def identify(sid, data):
         "birth_year": data.get("birth_year"),
         "is_anonymous": bool(data.get("is_anonymous")),
         "status": "idle",
+        "match_zone": normalize_match_zone({"match_zone": data.get("match_zone")}),
     }
 
 
@@ -126,7 +127,12 @@ async def start_matchmaking(sid, data):
     if isinstance(user_id, str) and not user_id.strip():
         user_id = "anonymous"
     filters = data.get('filters', {})
-    
+    match_zone = normalize_match_zone(filters)
+
+    if sid in online_users:
+        online_users[sid]["match_zone"] = match_zone
+        online_users[sid]["status"] = "waiting"
+
     # Salir de la sala actual si existe (Iniciar con match previo o botón Siguiente)
     if sid in user_rooms:
         await dissolve_active_match(sid, peers_auto_queue=True)
@@ -144,11 +150,19 @@ async def start_matchmaking(sid, data):
         
         user_rooms[sid] = room_id
         user_rooms[peer_sid] = room_id
+
+        if sid in online_users:
+            online_users[sid]["match_zone"] = match_zone
+            online_users[sid]["status"] = "in_call"
+        if peer_sid in online_users:
+            online_users[peer_sid]["match_zone"] = match_zone
+            online_users[peer_sid]["status"] = "in_call"
         
         # Notificar a ambos en paralelo (menos latencia hasta match_found).
+        payload = {"room_id": room_id, "match_zone": match_zone}
         await asyncio.gather(
-            sio.emit('match_found', {'initiator': True, 'room_id': room_id}, to=sid),
-            sio.emit('match_found', {'initiator': False, 'room_id': room_id}, to=peer_sid),
+            sio.emit('match_found', {**payload, "initiator": True}, to=sid),
+            sio.emit('match_found', {**payload, "initiator": False}, to=peer_sid),
         )
     else:
         # No se encontró, esperando en cola

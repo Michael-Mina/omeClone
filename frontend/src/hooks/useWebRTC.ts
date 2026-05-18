@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { socket } from '../sockets/socket';
 import { useAppStore } from '../store/useAppStore';
-import { resolveMatchmakingUserId } from '../utils/matchmakingUserId';
+import { emitStartMatchmaking } from '../utils/emitStartMatchmaking';
 
 const BLACK_SCREEN_CHECK_MS = 3500;
 /** Tras entrar en match hay negociación; no marcar negro antes. */
@@ -617,14 +617,10 @@ export const useWebRTC = () => {
         peerConnectionRef.current = null;
       }
       const queueNext = payload?.auto_queue === true;
-      const { role, setMatchStatus, resetMatch: reset } = useAppStore.getState();
+      const { setMatchStatus, resetMatch: reset } = useAppStore.getState();
       if (queueNext) {
         setMatchStatus('waiting');
-        socket.emit('start_matchmaking', {
-          user_id: resolveMatchmakingUserId(),
-          role,
-          filters: {},
-        });
+        emitStartMatchmaking();
       } else {
         reset();
       }

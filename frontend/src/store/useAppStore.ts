@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import type { MatchZone } from '../types/matchZone';
+import { DEFAULT_MATCH_ZONE } from '../types/matchZone';
 
 interface AppState {
   userId: string | null;
@@ -13,6 +15,8 @@ interface AppState {
   country: string | null;
   language: string | null;
   birthYear: number | null;
+  /** Sala de videollamada elegida (colas separadas en el servidor). */
+  matchZone: MatchZone;
   matchStatus: 'idle' | 'waiting' | 'matched' | 'stopped';
   roomId: string | null;
   peerSid: string | null;
@@ -36,6 +40,7 @@ interface AppState {
   setMatchData: (roomId: string, initiator: boolean) => void;
   resetMatch: () => void;
   stopMatch: () => void;
+  setMatchZone: (zone: MatchZone) => void;
   /** Sincronía desde servidor (admin / socket) sin volver a iniciar sesión. */
   applyServerExemptionSync: (p: { exemptFromAiCensorship: boolean }) => void;
 }
@@ -53,6 +58,7 @@ export const useAppStore = create<AppState>()(
       country: null,
       language: null,
       birthYear: null,
+      matchZone: DEFAULT_MATCH_ZONE,
       matchStatus: 'idle',
       roomId: null,
       peerSid: null,
@@ -75,6 +81,7 @@ export const useAppStore = create<AppState>()(
       setMatchData: (roomId, initiator) => set({ roomId, isInitiator: initiator, matchStatus: 'matched' }),
       resetMatch: () => set({ matchStatus: 'idle', roomId: null, peerSid: null, isInitiator: false }),
       stopMatch: () => set({ matchStatus: 'stopped', roomId: null, peerSid: null, isInitiator: false }),
+      setMatchZone: (zone) => set({ matchZone: zone }),
       applyServerExemptionSync: (p) => set({ exemptFromAiCensorship: p.exemptFromAiCensorship }),
     }),
     {
@@ -92,6 +99,7 @@ export const useAppStore = create<AppState>()(
         country: state.country,
         language: state.language,
         birthYear: state.birthYear,
+        matchZone: state.matchZone,
       }),
     }
   )

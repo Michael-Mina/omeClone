@@ -12,6 +12,7 @@ from app.schemas.user import (
     Token,
     AnonymousLoginIn,
     UserProfileUpdate,
+    NsfwStrikeIn,
     NsfwStrikeResponse,
     OAuthGoogleIn,
     OAuthSignupExtras,
@@ -276,12 +277,21 @@ def anonymous_login(payload: AnonymousLoginIn, db: Session = Depends(get_db)):
 
 @router.post("/nsfw-strike", response_model=NsfwStrikeResponse)
 def record_nsfw_strike(
+    body: NsfwStrikeIn | None = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Registra un strike tras detección NSFW sostenida en el cliente (fuente de verdad servidor)."""
     user = current_user
     now = datetime.now(timezone.utc)
+    zone = (body.match_zone if body else None) or "moderated"
+    if str(zone).strip().lower() == "adult":
+        return NsfwStrikeResponse(
+            nsfw_strike_count=int(getattr(user, "nsfw_strike_count", 0) or 0),
+            nsfw_ban_until=user.nsfw_ban_until,
+            nsfw_permanent_ban=bool(getattr(user, "nsfw_permanent_ban", False)),
+            is_banned=bool(user.is_banned),
+        )
 
     if getattr(user, "exempt_from_ai_censorship", False) or user.is_superuser:
         return NsfwStrikeResponse(

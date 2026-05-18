@@ -135,6 +135,7 @@ def get_dashboard_users(db: Session = Depends(get_db), current_user: User = Depe
             "exempt_from_ban": exempt_from_ban,
             "exempt_from_ai_censorship": exempt_from_ai_censorship,
             "match_room_id": room,
+            "match_zone": info.get("match_zone") or "moderated",
         })
 
     merged_by_db_id: dict[int, dict] = {}

@@ -1,7 +1,12 @@
 import uuid
 
-# In-memory queue instead of Redis para no depender de Docker
-waiting_queue = []
+# Colas por sala: moderated (IA + sanciones) | adult (+18, sin ambas)
+waiting_queues: dict[str, list] = {
+    "moderated": [],
+    "adult": [],
+}
+
+VALID_MATCH_ZONES = frozenset({"moderated", "adult"})
 
 
 def _is_anonymous_id(uid) -> bool:
@@ -12,43 +17,48 @@ def _is_anonymous_id(uid) -> bool:
     return s in ("", "anonymous", "none")
 
 
+def normalize_match_zone(filters: dict | None) -> str:
+    z = (filters or {}).get("match_zone") or "moderated"
+    s = str(z).strip().lower()
+    return s if s in VALID_MATCH_ZONES else "moderated"
+
+
 class MatchmakingService:
     @staticmethod
     async def find_match_or_wait(user_id: str, sid: str, filters: dict = None):
         """
-        Busca un usuario en espera. Si lo encuentra, retorna un match (room_id, peer_sid).
-        Si no, coloca al usuario en la lista de espera.
+        Busca un usuario en espera en la misma sala. Si lo encuentra, retorna match.
+        Si no, coloca al usuario en la cola de esa sala.
         """
-        global waiting_queue
+        zone = normalize_match_zone(filters)
+        queue = waiting_queues[zone]
 
-        # Quitar entradas duplicadas del mismo usuario registrado (otra pestaña / reintento).
-        # Si user_id es 'anonymous' genérico, NO vaciar la cola: solo quitar la propia entrada por sid.
         if _is_anonymous_id(user_id):
-            waiting_queue = [u for u in waiting_queue if u["sid"] != sid]
+            waiting_queues[zone] = [u for u in queue if u["sid"] != sid]
         else:
             uid_s = str(user_id).strip()
-            waiting_queue = [u for u in waiting_queue if str(u.get("user_id")) != uid_s]
-        
-        if len(waiting_queue) > 0:
-            # Hay alguien esperando
-            waiting_user = waiting_queue.pop(0)
-            waiting_sid = waiting_user['sid']
-            waiting_id = waiting_user['user_id']
-            
+            waiting_queues[zone] = [u for u in queue if str(u.get("user_id")) != uid_s]
+        queue = waiting_queues[zone]
+
+        if len(queue) > 0:
+            waiting_user = queue.pop(0)
+            waiting_sid = waiting_user["sid"]
+            waiting_id = waiting_user["user_id"]
+
             room_id = f"room_{uuid.uuid4().hex}"
             return {
                 "matched": True,
                 "room_id": room_id,
                 "peer_sid": waiting_sid,
-                "peer_id": waiting_id
+                "peer_id": waiting_id,
+                "match_zone": zone,
             }
-                
-        # Si no hay nadie, me pongo en la cola
-        waiting_queue.append({"user_id": user_id, "sid": sid})
-        
-        return {"matched": False}
+
+        waiting_queues[zone].append({"user_id": user_id, "sid": sid, "match_zone": zone})
+
+        return {"matched": False, "match_zone": zone}
 
     @staticmethod
     async def remove_from_queue(sid: str):
-        global waiting_queue
-        waiting_queue = [user for user in waiting_queue if user['sid'] != sid]
+        for zone in VALID_MATCH_ZONES:
+            waiting_queues[zone] = [user for user in waiting_queues[zone] if user["sid"] != sid]

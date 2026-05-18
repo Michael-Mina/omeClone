@@ -41,6 +41,12 @@ class UserResponse(UserBase):
         from_attributes = True
 
 
+class NsfwStrikeIn(BaseModel):
+    """Zona activa al reportar strike; en sala +18 no se aplican sanciones."""
+
+    match_zone: Optional[str] = "moderated"
+
+
 class NsfwStrikeResponse(BaseModel):
     nsfw_strike_count: int
     nsfw_ban_until: Optional[datetime] = None

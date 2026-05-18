@@ -173,12 +173,14 @@ export function useNsfwEnforcement(
     if (!token || reportingRef.current) return;
     reportingRef.current = true;
     try {
+      const zone = useAppStore.getState().matchZone;
       const res = await fetch(apiUrl('/api/auth/nsfw-strike'), {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ match_zone: zone }),
       });
       const data = (await res.json()) as NsfwPayload & { detail?: unknown };
       if (res.status === 403) {

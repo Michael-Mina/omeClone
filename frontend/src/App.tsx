@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import type { PublicNsfwDetectionSettings } from './types/publicNsfwSettings';
 import { socket } from './sockets/socket';
-import { resolveMatchmakingUserId } from './utils/matchmakingUserId';
+import { emitStartMatchmaking } from './utils/emitStartMatchmaking';
 import { resolveUserIdForIdentify } from './utils/resolveSocketUserId';
 import { useAppStore } from './store/useAppStore';
 import { useNavigate } from 'react-router-dom';
@@ -11,6 +11,9 @@ import { useNsfwEnforcement, NSFW_STRIKES_FOR_PERMANENT } from './hooks/useNsfwE
 import type { NsfwDetectionRuntimeConfig } from './hooks/useNSFWDetection';
 import type { NsfwEnforcementRuntime } from './hooks/useNsfwEnforcement';
 import { MatchChatPanel, type ChatLine } from './components/MatchChatPanel';
+import { MatchZonePicker } from './components/MatchZonePicker';
+import { MATCH_ZONE_META, userMeetsAdultZone } from './types/matchZone';
+import type { MatchZone } from './types/matchZone';
 import { translateForChatDisplay, resolveTranslateTargetLang } from './utils/chatTranslate';
 import { languageLabel } from './data/profileOptions';
 import { apiUrl } from './config/apiBase';
@@ -58,6 +61,8 @@ function App() {
     gender,
     country,
     birthYear,
+    matchZone,
+    setMatchZone,
   } = useAppStore();
   const {
     localVideoRef,
@@ -92,13 +97,18 @@ function App() {
     return { streakMs: nsfwPublic.streak_ms, graceFalseMs: nsfwPublic.grace_false_ms };
   }, [nsfwPublic]);
 
+  const exemptFromNsfwPolicy =
+    role === 'superadmin' || exemptFromAiCensorship || matchZone === 'adult';
+
   const { isNSFW, isModelLoading } = useNSFWDetection(
     localVideoRef,
     role,
-    exemptFromAiCensorship,
+    exemptFromNsfwPolicy,
     nsfwDetectionRuntime
   );
-  const exemptFromNsfwPolicy = role === 'superadmin' || exemptFromAiCensorship;
+  const canEnterAdultZone = userMeetsAdultZone(birthYear);
+  const adultZoneBlockedHint =
+    'Indica tu año de nacimiento en el perfil (mayor de 18) para entrar a la sala +18.';
   const {
     visualBlur,
     overlayKind,
@@ -212,12 +222,11 @@ function App() {
     const s = useAppStore.getState();
     if (s.matchStatus === 'waiting' || s.matchStatus === 'stopped') return;
     if (!socket.connected) return;
+    if (s.matchZone === 'adult' && !userMeetsAdultZone(s.birthYear)) {
+      s.setMatchZone('moderated');
+    }
     s.setMatchStatus('waiting');
-    socket.emit('start_matchmaking', {
-      user_id: resolveMatchmakingUserId(),
-      role: s.role,
-      filters: {},
-    });
+    emitStartMatchmaking();
   }, []);
 
   /** Tras reconectar el socket: si seguíamos en búsqueda, volver a registrar en cola (Strict Mode / tabs). */
@@ -226,12 +235,11 @@ function App() {
     const s = useAppStore.getState();
     if (s.matchStatus !== 'idle' && s.matchStatus !== 'waiting') return;
     if (!socket.connected) return;
+    if (s.matchZone === 'adult' && !userMeetsAdultZone(s.birthYear)) {
+      s.setMatchZone('moderated');
+    }
     if (s.matchStatus === 'idle') s.setMatchStatus('waiting');
-    socket.emit('start_matchmaking', {
-      user_id: resolveMatchmakingUserId(),
-      role: s.role,
-      filters: {},
-    });
+    emitStartMatchmaking();
   }, []);
 
   /* Cámara: efecto aparte; si va dentro del efecto del socket y startLocalStream cambiara cada render,
@@ -261,13 +269,14 @@ function App() {
       language: lang,
       birth_year: by,
       is_anonymous: anon,
+      match_zone: useAppStore.getState().matchZone,
     });
   }, []);
 
   /** Tras login o rehidratación: el socket ya puede estar conectado sin volver a disparar `connect`. */
   useEffect(() => {
     emitSocketIdentify();
-  }, [userId, token, displayName, isAnonymous, role, language, gender, country, birthYear, emitSocketIdentify]);
+  }, [userId, token, displayName, isAnonymous, role, language, gender, country, birthYear, matchZone, emitSocketIdentify]);
 
   useEffect(() => {
     let cancelled = false;
@@ -480,14 +489,33 @@ function App() {
   }, [stopMatch]);
 
   const handleResume = useCallback(() => {
-    // Resume matchmaking from stopped state
+    const s = useAppStore.getState();
+    if (s.matchZone === 'adult' && !userMeetsAdultZone(s.birthYear)) {
+      setMatchZone('moderated');
+    }
     resetMatch();
-  }, [resetMatch]);
+  }, [resetMatch, setMatchZone]);
+
+  const handleMatchZoneChange = useCallback(
+    (zone: MatchZone) => {
+      if (zone === 'adult' && !canEnterAdultZone) return;
+      const s = useAppStore.getState();
+      if (s.matchZone === zone) return;
+      setMatchZone(zone);
+      if (s.matchStatus === 'waiting' || s.matchStatus === 'idle') {
+        socket.emit('cancel_matchmaking', {});
+        s.setMatchStatus('waiting');
+        emitStartMatchmaking();
+      }
+    },
+    [canEnterAdultZone, setMatchZone]
+  );
 
   /** Durante bloqueo IA no debe seguir en cola ni en llamada. */
   useEffect(() => {
     if (!blocksMatchmaking) return;
     const s = useAppStore.getState();
+    if (s.matchZone === 'adult') return;
     if (s.matchStatus === 'waiting' || s.matchStatus === 'matched') {
       socket.emit('cancel_matchmaking', {});
       stopMatch();
@@ -615,7 +643,7 @@ function App() {
           {error}
         </div>
       )}
-      {isModelLoading && role !== 'superadmin' && (
+      {isModelLoading && !exemptFromNsfwPolicy && (
         <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-black/60 rounded text-[9px] text-blue-300 flex items-center gap-1">
           <span className="w-1 h-1 bg-blue-500 rounded-full animate-ping"></span>
           IA
@@ -684,6 +712,13 @@ function App() {
             )}
           </button>
 
+          <span
+            className={`hidden sm:inline text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-gradient-to-r ${MATCH_ZONE_META[matchZone].accent}`}
+            title={MATCH_ZONE_META[matchZone].subtitle}
+          >
+            {MATCH_ZONE_META[matchZone].badge}
+          </span>
+
           <span className="text-xs md:text-sm text-gray-400 font-medium">
             En línea: <span className="text-blue-400">{onlineUsers}</span>
           </span>
@@ -751,25 +786,44 @@ function App() {
 
           {/* Esperando match (incluye idle antes de entrar en cola: todo automático) */}
           {(matchStatus === 'idle' || matchStatus === 'waiting') && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-950/80 backdrop-blur-sm z-10">
-              <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-              <p className="text-xl font-medium animate-pulse">
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-950/80 backdrop-blur-sm z-10 p-4 overflow-y-auto">
+              <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4 shrink-0" />
+              <p className="text-xl font-medium animate-pulse mb-6 text-center">
                 {matchStatus === 'idle' ? 'Preparando búsqueda...' : 'Buscando a alguien...'}
               </p>
+              <div className="w-full max-w-lg">
+                <MatchZonePicker
+                  value={matchZone}
+                  onChange={handleMatchZoneChange}
+                  adultDisabled={!canEnterAdultZone}
+                  adultDisabledHint={adultZoneBlockedHint}
+                  compact
+                />
+              </div>
             </div>
           )}
 
           {/* Stopped overlay */}
           {matchStatus === 'stopped' && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/90 z-10">
-              <StopCircle size={48} className="text-red-400 mb-4" />
-              <p className="text-lg text-gray-300 font-medium mb-2">Conexión detenida</p>
-              <p className="text-sm text-gray-500 mb-6">No estás buscando a nadie</p>
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/95 z-10 p-4 overflow-y-auto">
+              <StopCircle size={40} className="text-red-400 mb-3 shrink-0" />
+              <p className="text-lg text-gray-300 font-medium mb-1">Conexión detenida</p>
+              <p className="text-sm text-gray-500 mb-4 text-center">Elige sala y reanuda la búsqueda</p>
+              <div className="w-full max-w-lg mb-5">
+                <MatchZonePicker
+                  value={matchZone}
+                  onChange={handleMatchZoneChange}
+                  adultDisabled={!canEnterAdultZone}
+                  adultDisabledHint={adultZoneBlockedHint}
+                  compact
+                />
+              </div>
               <button
+                type="button"
                 onClick={handleResume}
-                className="px-8 py-3 rounded-xl font-bold text-base flex items-center gap-2 transition-all transform hover:scale-[1.03] active:scale-95 shadow-lg bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white"
+                className="px-8 py-3 rounded-xl font-bold text-base flex items-center gap-2 transition-all transform hover:scale-[1.03] active:scale-95 shadow-lg bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white shrink-0"
               >
-                <Play size={20} fill="currentColor" /> Reanudar
+                <Play size={20} fill="currentColor" /> Reanudar en {MATCH_ZONE_META[matchZone].badge}
               </button>
             </div>
           )}
