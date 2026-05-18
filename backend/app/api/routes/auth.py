@@ -22,6 +22,8 @@ from app.core.config import settings
 from app.core.security import verify_password, get_password_hash, create_access_token
 from app.core.age import is_at_least_age, MIN_REGISTER_AGE
 from app.api.deps import get_current_user
+from jose import jwt, JWTError
+from fastapi import Header
 import uuid
 
 NSFW_COOLDOWN_MINUTES = 2
@@ -332,6 +334,46 @@ def record_nsfw_strike(
         nsfw_permanent_ban=bool(user.nsfw_permanent_ban),
         is_banned=bool(user.is_banned),
     )
+
+
+@router.post("/refresh", response_model=Token)
+def refresh_access_token(
+    authorization: str | None = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Nuevo access_token si el JWT sigue siendo del usuario (aunque haya expirado)."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+        )
+    raw = authorization.split(" ", 1)[1].strip()
+    try:
+        payload = jwt.decode(
+            raw,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
+            options={"verify_exp": False},
+        )
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+        )
+    user_id = payload.get("sub")
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+        )
+    user = db.query(User).filter(User.id == int(user_id)).first()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+        )
+    _raise_if_login_blocked(user)
+    return _token_payload(user)
 
 
 @router.get("/me", response_model=UserResponse)

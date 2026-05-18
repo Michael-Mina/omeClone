@@ -1,4 +1,5 @@
 import { apiUrl } from '../config/apiBase';
+import { ensureFreshToken } from './authSession';
 
 /** Entradas máximas en caché (FIFO simple al superar el límite). */
 const MAX_CACHE_ENTRIES = 400;
@@ -48,9 +49,10 @@ function normalizeTargetLang(targetLang: string | null | undefined): string {
 export async function translateChatText(
   text: string,
   targetLang: string | null | undefined,
-  token: string | null
+  _token?: string | null
 ): Promise<string> {
-  if (!token?.trim()) return text;
+  const token = await ensureFreshToken();
+  if (!token) return text;
   const raw = text.trim();
   if (!raw) return text;
 
@@ -92,9 +94,10 @@ export async function translateChatText(
 export async function translateForChatDisplay(
   raw: string,
   targetLang: string | null | undefined,
-  token: string | null
+  _token?: string | null
 ): Promise<{ text: string; originalText?: string }> {
-  if (!token?.trim()) return { text: raw };
+  const token = await ensureFreshToken();
+  if (!token) return { text: raw };
   const trimmed = raw.trim();
   if (!trimmed || !chatLineLikelyNeedsTranslation(trimmed)) return { text: raw };
   try {

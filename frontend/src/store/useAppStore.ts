@@ -46,6 +46,8 @@ interface AppState {
   setSalaSessionActive: (active: boolean) => void;
   /** Sincronía desde servidor (admin / socket) sin volver a iniciar sesión. */
   applyServerExemptionSync: (p: { exemptFromAiCensorship: boolean }) => void;
+  /** Solo renueva JWT (p. ej. tras /auth/refresh). */
+  updateAccessToken: (token: string) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -88,6 +90,7 @@ export const useAppStore = create<AppState>()(
       setMatchZone: (zone) => set({ matchZone: zone }),
       setSalaSessionActive: (active) => set({ salaSessionActive: active }),
       applyServerExemptionSync: (p) => set({ exemptFromAiCensorship: p.exemptFromAiCensorship }),
+      updateAccessToken: (token) => set({ token }),
     }),
     {
       name: 'ometv-auth',
