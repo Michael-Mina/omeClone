@@ -8,6 +8,8 @@ type DocPiPApi = {
 };
 
 export type PipCapability = 'document' | 'video' | 'none';
+export type PipMode = 'document' | 'video' | null;
+export type MatchStatus = 'idle' | 'waiting' | 'matched' | 'stopped';
 
 function getDocPiP(): DocPiPApi | undefined {
   return (window as Window & { documentPictureInPicture?: DocPiPApi }).documentPictureInPicture;
@@ -28,56 +30,56 @@ function injectPiPStyles(doc: Document): void {
       font-family: system-ui, -apple-system, Segoe UI, sans-serif;
       background: #0a0a0a; color: #fff;
     }
-    .wrap { display: flex; flex-direction: column; height: 100%; min-height: 100vh; }
+    .wrap {
+      display: flex; flex-direction: column;
+      width: 100%; height: 100%; max-height: 100dvh;
+    }
     .video-wrap {
-      flex: 1; position: relative; background: #000; min-height: 120px;
+      flex: 1 1 auto; position: relative; background: #000; min-height: 0;
     }
     video {
       width: 100%; height: 100%; object-fit: cover; display: block; background: #000;
     }
     .bar {
-      display: flex; align-items: center; justify-content: center;
-      gap: 8px; padding: 10px 10px 12px;
-      background: #111; border-top: 1px solid rgba(255,255,255,.1);
-      flex-shrink: 0;
+      display: flex; align-items: stretch; justify-content: center;
+      gap: 6px; padding: 8px 8px max(10px, env(safe-area-inset-bottom, 0px));
+      background: #111; border-top: 1px solid rgba(255,255,255,.12);
+      flex: 0 0 auto; min-height: 52px;
     }
     .btn {
-      flex: 1; max-width: 92px; display: flex; flex-direction: column;
-      align-items: center; justify-content: center; gap: 4px;
-      min-height: 56px; padding: 6px 4px;
+      flex: 1; max-width: 72px; display: flex; align-items: center; justify-content: center;
+      min-height: 44px; min-width: 44px; padding: 8px;
       border: none; border-radius: 12px; cursor: pointer;
       background: rgba(255,255,255,.12); color: #e5e7eb;
-      font-size: 9px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: .04em;
     }
     .btn:hover { background: rgba(255,255,255,.2); }
     .btn:active { transform: scale(.96); }
-    .btn svg { width: 22px; height: 22px; flex-shrink: 0; }
+    .btn svg { width: 24px; height: 24px; flex-shrink: 0; display: block; }
     .btn-mic-on { background: rgba(34,197,94,.35); color: #bbf7d0; }
     .btn-mic-off { background: rgba(239,68,68,.4); color: #fecaca; }
     .btn-next { background: rgba(59,130,246,.35); color: #bfdbfe; }
     .btn-max { background: rgba(168,85,247,.35); color: #e9d5ff; }
     .badge {
-      position: absolute; top: 8px; left: 8px; z-index: 2;
-      padding: 4px 8px; border-radius: 8px; font-size: 10px; font-weight: 800;
+      position: absolute; top: 6px; left: 6px; z-index: 2;
+      padding: 3px 7px; border-radius: 6px; font-size: 9px; font-weight: 800;
       background: rgba(0,0,0,.7); color: #c4b5fd;
     }
     .waiting {
       position: absolute; inset: 0; display: flex; align-items: center;
-      justify-content: center; color: #9ca3af; font-size: 12px; padding: 12px;
+      justify-content: center; color: #9ca3af; font-size: 11px; padding: 8px;
       text-align: center;
     }
   `;
   doc.head.appendChild(style);
 }
 
-const ICON_MIC_ON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`;
-const ICON_MIC_OFF = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`;
-const ICON_NEXT = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 4l10 8-10 8V4zm11 0v16h2V4h-2z"/></svg>`;
-const ICON_MAX = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>`;
+const ICON_MIC_ON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`;
+const ICON_MIC_OFF = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`;
+const ICON_NEXT = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 4l10 8-10 8V4zm11 0v16h2V4h-2z"/></svg>`;
+const ICON_MAX = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>`;
 
 type Options = {
-  active: boolean;
+  matchStatus: MatchStatus;
   remoteVideoRef: RefObject<HTMLVideoElement | null>;
   micMuted: boolean;
   onToggleMic: () => void;
@@ -85,13 +87,14 @@ type Options = {
 };
 
 export function useMatchFloatingWindow({
-  active,
+  matchStatus,
   remoteVideoRef,
   micMuted,
   onToggleMic,
   onNext,
 }: Options) {
   const [isFloatingOpen, setIsFloatingOpen] = useState(false);
+  const [pipMode, setPipMode] = useState<PipMode>(null);
   const [floatingError, setFloatingError] = useState<string | null>(null);
 
   const pipWindowRef = useRef<Window | null>(null);
@@ -99,11 +102,14 @@ export function useMatchFloatingWindow({
   const pipMicBtnRef = useRef<HTMLButtonElement | null>(null);
   const pipWaitingElRef = useRef<HTMLElement | null>(null);
   const openingRef = useRef(false);
-  const modeRef = useRef<'document' | 'video' | null>(null);
-  const callbacksRef = useRef({ onToggleMic, onNext });
-  callbacksRef.current = { onToggleMic, onNext };
+  const modeRef = useRef<PipMode>(null);
+  const callbacksRef = useRef({ onToggleMic, onNext, onFocusApp: () => {} });
+  callbacksRef.current.onToggleMic = onToggleMic;
+  callbacksRef.current.onNext = onNext;
 
   const pipCapability = getPipCapability();
+  const keepFloatingAlive = matchStatus === 'matched' || matchStatus === 'waiting';
+  const canOpenFloating = matchStatus === 'matched';
 
   const getRemoteStream = useCallback(() => {
     const el = remoteVideoRef.current;
@@ -111,12 +117,48 @@ export function useMatchFloatingWindow({
     return el.srcObject;
   }, [remoteVideoRef]);
 
+  const focusMainAndClosePip = useCallback(() => {
+    const child = pipWindowRef.current;
+    const api = getDocPiP();
+
+    if (child && !child.closed) {
+      try {
+        child.close();
+      } catch {
+        /* noop */
+      }
+    } else if (api?.window && !api.window.closed) {
+      try {
+        api.window.close();
+      } catch {
+        /* noop */
+      }
+    }
+
+    pipWindowRef.current = null;
+    pipVideoRef.current = null;
+    pipMicBtnRef.current = null;
+    pipWaitingElRef.current = null;
+    modeRef.current = null;
+    setPipMode(null);
+    setIsFloatingOpen(false);
+
+    try {
+      window.focus();
+    } catch {
+      /* noop */
+    }
+  }, []);
+
+  callbacksRef.current.onFocusApp = focusMainAndClosePip;
+
   const updateMicButton = useCallback((muted: boolean) => {
     const btn = pipMicBtnRef.current;
     if (!btn) return;
     btn.className = `btn ${muted ? 'btn-mic-off' : 'btn-mic-on'}`;
-    btn.innerHTML = `${muted ? ICON_MIC_OFF : ICON_MIC_ON}<span>${muted ? 'Activar' : 'Silenciar'}</span>`;
+    btn.innerHTML = muted ? ICON_MIC_OFF : ICON_MIC_ON;
     btn.title = muted ? 'Activar micrófono' : 'Silenciar micrófono';
+    btn.setAttribute('aria-label', btn.title);
   }, []);
 
   const setWaitingVisible = useCallback((show: boolean) => {
@@ -173,7 +215,10 @@ export function useMatchFloatingWindow({
     pipVideoRef.current = null;
     pipMicBtnRef.current = null;
     pipWaitingElRef.current = null;
-    if (modeRef.current === 'document') modeRef.current = null;
+    if (modeRef.current === 'document') {
+      modeRef.current = null;
+      setPipMode(null);
+    }
     setIsFloatingOpen(false);
   }, []);
 
@@ -184,6 +229,7 @@ export function useMatchFloatingWindow({
     pipMicBtnRef.current = null;
     pipWaitingElRef.current = null;
     modeRef.current = null;
+    setPipMode(null);
 
     if (w && !w.closed) {
       try {
@@ -231,7 +277,7 @@ export function useMatchFloatingWindow({
 
       const waiting = doc.createElement('div');
       waiting.className = 'waiting';
-      waiting.textContent = 'Esperando vídeo…';
+      waiting.textContent = 'Buscando…';
       pipWaitingElRef.current = waiting;
 
       const video = doc.createElement('video');
@@ -249,27 +295,34 @@ export function useMatchFloatingWindow({
       const btnMic = doc.createElement('button');
       btnMic.type = 'button';
       pipMicBtnRef.current = btnMic;
-      btnMic.addEventListener('click', () => callbacksRef.current.onToggleMic());
+      btnMic.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        callbacksRef.current.onToggleMic();
+      });
 
       const btnNext = doc.createElement('button');
       btnNext.type = 'button';
       btnNext.className = 'btn btn-next';
-      btnNext.innerHTML = `${ICON_NEXT}<span>Siguiente</span>`;
+      btnNext.innerHTML = ICON_NEXT;
       btnNext.title = 'Siguiente persona';
-      btnNext.addEventListener('click', () => callbacksRef.current.onNext());
+      btnNext.setAttribute('aria-label', 'Siguiente persona');
+      btnNext.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        callbacksRef.current.onNext();
+      });
 
       const btnMax = doc.createElement('button');
       btnMax.type = 'button';
       btnMax.className = 'btn btn-max';
-      btnMax.innerHTML = `${ICON_MAX}<span>Abrir app</span>`;
+      btnMax.innerHTML = ICON_MAX;
       btnMax.title = 'Volver a la aplicación';
-      btnMax.addEventListener('click', () => {
-        try {
-          window.opener?.focus();
-        } catch {
-          /* noop */
-        }
-        window.close();
+      btnMax.setAttribute('aria-label', 'Volver a la aplicación');
+      btnMax.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        callbacksRef.current.onFocusApp();
       });
 
       bar.append(btnMic, btnNext, btnMax);
@@ -283,11 +336,12 @@ export function useMatchFloatingWindow({
 
   const openDocumentPiP = useCallback(async (): Promise<boolean> => {
     const api = getDocPiP();
-    if (!api || !active) return false;
+    if (!api || !canOpenFloating) return false;
 
     if (api.window && !api.window.closed) {
       pipWindowRef.current = api.window;
       modeRef.current = 'document';
+      setPipMode('document');
       await syncStreamToPiP();
       setIsFloatingOpen(true);
       setFloatingError(null);
@@ -298,7 +352,7 @@ export function useMatchFloatingWindow({
 
     const stream = getRemoteStream();
     if (!stream) {
-      setFloatingError('Aún no hay vídeo del otro usuario. Espera a que conecte.');
+      setFloatingError('Aún no hay vídeo. Espera a que conecte.');
       return false;
     }
 
@@ -313,14 +367,21 @@ export function useMatchFloatingWindow({
     openingRef.current = true;
     setFloatingError(null);
 
+    const mobile = window.matchMedia('(max-width: 768px)').matches;
+
     try {
       const pipWin = await api.requestWindow({
-        width: Math.min(440, Math.max(320, Math.round(window.screen.width * 0.34))),
-        height: Math.min(380, Math.max(260, Math.round(window.screen.height * 0.36))),
+        width: mobile
+          ? Math.min(360, window.screen.width - 16)
+          : Math.min(440, Math.max(320, Math.round(window.screen.width * 0.34))),
+        height: mobile
+          ? Math.min(300, Math.max(240, Math.round(window.screen.height * 0.32)))
+          : Math.min(380, Math.max(260, Math.round(window.screen.height * 0.36))),
       });
 
       pipWindowRef.current = pipWin;
       modeRef.current = 'document';
+      setPipMode('document');
       buildDocumentPiPWindow(pipWin);
       await syncStreamToPiP();
 
@@ -333,14 +394,12 @@ export function useMatchFloatingWindow({
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn('[PiP] Document PiP falló:', msg);
-      setFloatingError(
-        'No se pudo abrir la ventana flotante. En PC usa Chrome/Edge y pulsa el botón Flotante mientras ves la llamada.'
-      );
+      setFloatingError('No se pudo abrir la ventana flotante.');
       return false;
     } finally {
       openingRef.current = false;
     }
-  }, [active, getRemoteStream, syncStreamToPiP, buildDocumentPiPWindow, cleanupDocumentPiP]);
+  }, [canOpenFloating, getRemoteStream, syncStreamToPiP, buildDocumentPiPWindow, cleanupDocumentPiP]);
 
   const openVideoPiP = useCallback(async (asFallback = false): Promise<boolean> => {
     const el = remoteVideoRef.current;
@@ -354,10 +413,11 @@ export function useMatchFloatingWindow({
         await el.requestPictureInPicture();
       }
       modeRef.current = 'video';
+      setPipMode('video');
       setIsFloatingOpen(true);
       setFloatingError(
         asFallback
-          ? 'Modo vídeo flotante (sin botones). Para controles completos usa Chrome o Edge en PC.'
+          ? 'Vídeo flotante sin controles en ventana. Usa la barra inferior de la app.'
           : null
       );
       return true;
@@ -367,9 +427,8 @@ export function useMatchFloatingWindow({
     }
   }, [remoteVideoRef]);
 
-  /** Debe llamarse desde un clic del usuario (obligatorio en PC). */
   const enableFloating = useCallback(async () => {
-    if (!active) {
+    if (!canOpenFloating) {
       setFloatingError('Conéctate con alguien primero.');
       return false;
     }
@@ -384,9 +443,9 @@ export function useMatchFloatingWindow({
       return openVideoPiP(false);
     }
 
-    setFloatingError('Tu navegador no admite ventana flotante. Prueba Chrome o Edge en PC.');
+    setFloatingError('Tu navegador no admite ventana flotante.');
     return false;
-  }, [active, pipCapability, openDocumentPiP, openVideoPiP]);
+  }, [canOpenFloating, pipCapability, openDocumentPiP, openVideoPiP]);
 
   const disableFloating = useCallback(async () => {
     setFloatingError(null);
@@ -402,10 +461,19 @@ export function useMatchFloatingWindow({
   }, [isFloatingOpen, enableFloating, disableFloating]);
 
   useEffect(() => {
-    if (!active) {
+    if (!keepFloatingAlive) {
       void disableFloating();
     }
-  }, [active, disableFloating]);
+  }, [keepFloatingAlive, disableFloating]);
+
+  useEffect(() => {
+    if (matchStatus === 'waiting' && isFloatingOpen) {
+      setWaitingVisible(true);
+    }
+    if (matchStatus === 'matched' && isFloatingOpen) {
+      void syncStreamToPiP();
+    }
+  }, [matchStatus, isFloatingOpen, syncStreamToPiP, setWaitingVisible]);
 
   useEffect(() => {
     updateMicButton(micMuted);
@@ -414,7 +482,7 @@ export function useMatchFloatingWindow({
   useEffect(() => {
     if (!isFloatingOpen) return;
     void syncStreamToPiP();
-  }, [isFloatingOpen, active, syncStreamToPiP]);
+  }, [isFloatingOpen, matchStatus, syncStreamToPiP]);
 
   useEffect(() => {
     if (!isFloatingOpen) return;
@@ -440,6 +508,7 @@ export function useMatchFloatingWindow({
     const onExitClassic = () => {
       if (modeRef.current === 'video') {
         modeRef.current = null;
+        setPipMode(null);
         setIsFloatingOpen(false);
       }
     };
@@ -447,29 +516,60 @@ export function useMatchFloatingWindow({
     return () => document.removeEventListener('leavepictureinpicture', onExitClassic);
   }, []);
 
-  /** Si ya está activo el flotante y cambias de pestaña, solo re-sincroniza (no reabrir sin gesto). */
   useEffect(() => {
-    if (!active || !isFloatingOpen) return;
+    if (!isFloatingOpen) return;
 
     const onVisibility = () => {
-      if (document.visibilityState === 'hidden') {
-        void syncStreamToPiP();
-      } else {
-        void syncStreamToPiP();
-      }
+      void syncStreamToPiP();
     };
 
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
-  }, [active, isFloatingOpen, syncStreamToPiP]);
+  }, [isFloatingOpen, syncStreamToPiP]);
+
+  /** Controles en auriculares / pantalla bloqueada (móvil). */
+  useEffect(() => {
+    if (!isFloatingOpen || !('mediaSession' in navigator)) return;
+
+    const ms = navigator.mediaSession;
+    try {
+      ms.metadata = new MediaMetadata({ title: 'Albedrío', artist: 'Videollamada' });
+    } catch {
+      /* noop */
+    }
+
+    const onNextHandler = () => callbacksRef.current.onNext();
+    const onMicHandler = () => callbacksRef.current.onToggleMic();
+
+    try {
+      ms.setActionHandler('nexttrack', onNextHandler);
+      ms.setActionHandler('play', onMicHandler);
+      ms.setActionHandler('pause', onMicHandler);
+    } catch {
+      /* noop */
+    }
+
+    return () => {
+      try {
+        ms.setActionHandler('nexttrack', null);
+        ms.setActionHandler('play', null);
+        ms.setActionHandler('pause', null);
+      } catch {
+        /* noop */
+      }
+    };
+  }, [isFloatingOpen]);
 
   return {
     pipCapability,
+    pipMode,
     isFloatingOpen,
     floatingError,
     enableFloating,
     disableFloating,
     toggleFloating,
+    focusMainAndClosePip,
     supportsDocumentPiP: pipCapability === 'document',
+    showInAppPipControls: isFloatingOpen && pipMode === 'video',
   };
 }

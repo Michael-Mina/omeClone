@@ -36,6 +36,7 @@ import {
   MicOff,
   Volume2,
   PictureInPicture2,
+  Maximize2,
 } from 'lucide-react';
 
 const MOBILE_PIP_W = 128;
@@ -490,8 +491,10 @@ function App() {
     floatingError,
     toggleFloating,
     enableFloating,
+    focusMainAndClosePip,
+    showInAppPipControls,
   } = useMatchFloatingWindow({
-    active: matchStatus === 'matched',
+    matchStatus,
     remoteVideoRef,
     micMuted,
     onToggleMic: toggleMicMuted,
@@ -835,19 +838,18 @@ function App() {
             <button
               type="button"
               onClick={() => void enableFloating()}
-              className="absolute top-12 left-3 right-3 md:top-14 md:left-4 md:right-auto md:max-w-sm z-25 px-3 py-2 rounded-xl bg-violet-950/90 border border-violet-500/50 text-violet-100 text-xs font-semibold text-left shadow-lg hover:bg-violet-900/90 active:scale-[0.99] transition-colors"
+              className="absolute top-3 right-3 md:top-4 md:right-4 z-[25] h-10 w-10 rounded-full flex items-center justify-center bg-violet-950/90 border border-violet-500/50 text-violet-200 shadow-lg hover:bg-violet-800/90 active:scale-95 transition-transform"
+              title="Activar modo flotante"
+              aria-label="Activar modo flotante"
             >
-              <span className="flex items-center gap-2">
-                <PictureInPicture2 size={16} className="shrink-0" />
-                Pulsa aquí para activar el modo flotante antes de minimizar o cambiar de pestaña.
-              </span>
+              <PictureInPicture2 size={20} strokeWidth={2} />
             </button>
           )}
 
           {floatingError && (
             <p
               role="alert"
-              className="absolute top-12 left-3 right-3 md:top-14 md:left-4 md:right-auto md:max-w-md z-25 px-3 py-2 rounded-xl bg-amber-950/95 border border-amber-600/60 text-amber-100 text-xs"
+              className="absolute top-14 right-3 md:top-16 md:right-4 z-[25] max-w-[220px] px-2.5 py-1.5 rounded-lg bg-amber-950/95 border border-amber-600/60 text-amber-100 text-[10px] leading-snug"
             >
               {floatingError}
             </p>
@@ -1054,6 +1056,46 @@ function App() {
             <div className="relative flex-1 min-h-0 bg-black">
               {localCameraMarkup}
             </div>
+          </div>
+        )}
+
+        {showInAppPipControls && (
+          <div
+            className="fixed z-[48] left-0 right-0 bottom-0 flex items-center justify-center gap-3 px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-gray-950/95 border-t border-white/10 backdrop-blur-md"
+            role="toolbar"
+            aria-label="Controles videollamada flotante"
+          >
+            <button
+              type="button"
+              onClick={() => toggleMicMuted()}
+              className={`h-12 w-12 shrink-0 rounded-full flex items-center justify-center border shadow-lg active:scale-95 ${
+                micMuted
+                  ? 'bg-red-900/95 border-red-600 text-red-200'
+                  : 'bg-gray-800 border-gray-600 text-gray-100'
+              }`}
+              title={micMuted ? 'Activar micrófono' : 'Silenciar'}
+              aria-label={micMuted ? 'Activar micrófono' : 'Silenciar micrófono'}
+            >
+              {micMuted ? <MicOff size={22} /> : <Mic size={22} />}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleStartNext()}
+              className="h-12 w-12 shrink-0 rounded-full flex items-center justify-center bg-blue-700 border border-blue-500 text-white shadow-lg active:scale-95"
+              title="Siguiente"
+              aria-label="Siguiente persona"
+            >
+              <SkipForward size={22} fill="currentColor" />
+            </button>
+            <button
+              type="button"
+              onClick={() => focusMainAndClosePip()}
+              className="h-12 w-12 shrink-0 rounded-full flex items-center justify-center bg-violet-800 border border-violet-500 text-white shadow-lg active:scale-95"
+              title="Volver a la app"
+              aria-label="Volver a la aplicación"
+            >
+              <Maximize2 size={22} />
+            </button>
           </div>
         )}
 
