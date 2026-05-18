@@ -40,7 +40,10 @@ def _translate_sync(text: str, target: str) -> str:
         from deep_translator import GoogleTranslator
 
         return GoogleTranslator(source="auto", target=target).translate(text) or text
-    except Exception:
+    except Exception as exc:
+        import logging
+
+        logging.getLogger("uvicorn.error").warning("[translate] %s → %s failed: %s", text[:40], target, exc)
         return text
 
 

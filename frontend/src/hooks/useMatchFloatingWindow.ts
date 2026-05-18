@@ -20,15 +20,57 @@ export function isMobileDevice(): boolean {
   return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 }
 
+type WebkitVideo = HTMLVideoElement & {
+  webkitSupportsPresentationMode?: (mode: string) => boolean;
+  webkitSetPresentationMode?: (mode: string) => void;
+  webkitPresentationMode?: string;
+};
+
+/** PiP clásico (Chrome/Firefox) o webkit (Safari iOS). */
+export function canUseVideoPiP(): boolean {
+  if (typeof document === 'undefined') return false;
+  if (document.pictureInPictureEnabled) return true;
+  if (typeof HTMLVideoElement === 'undefined') return false;
+  try {
+    const probe = document.createElement('video') as WebkitVideo;
+    return Boolean(probe.webkitSupportsPresentationMode?.('picture-in-picture'));
+  } catch {
+    return false;
+  }
+}
+
+function isWebkitVideoPiP(el: HTMLVideoElement | null): boolean {
+  if (!el) return false;
+  return (el as WebkitVideo).webkitPresentationMode === 'picture-in-picture';
+}
+
+export function isVideoPiPActive(el: HTMLVideoElement | null): boolean {
+  if (!el) return false;
+  if (document.pictureInPictureElement === el) return true;
+  return isWebkitVideoPiP(el);
+}
+
+async function exitWebkitVideoPiP(el: HTMLVideoElement): Promise<void> {
+  const wk = el as WebkitVideo;
+  if (wk.webkitPresentationMode === 'picture-in-picture' && wk.webkitSetPresentationMode) {
+    try {
+      wk.webkitSetPresentationMode('inline');
+    } catch {
+      /* noop */
+    }
+  }
+}
+
 export function getPipCapability(): PipCapability {
   if (typeof getDocPiP()?.requestWindow === 'function') return 'document';
-  if (typeof document !== 'undefined' && document.pictureInPictureEnabled) return 'video';
+  if (canUseVideoPiP()) return 'video';
   return 'none';
 }
 
 /** Mostrar botón PiP: hay API o es móvil (Chrome Android puede exponer Document PiP tras cargar). */
 export function supportsPipButton(cap: PipCapability): boolean {
-  return cap !== 'none' || isMobileDevice();
+  if (cap !== 'none') return true;
+  return isMobileDevice() && canUseVideoPiP();
 }
 
 /** Evita que el navegador muestre prev/play/next en PiP de vídeo (Media Session). */
@@ -153,10 +195,12 @@ export function useMatchFloatingWindow({
   useEffect(() => {
     const refresh = () => setPipCapability(getPipCapability());
     refresh();
-    const t = window.setTimeout(refresh, 400);
+    const t1 = window.setTimeout(refresh, 400);
+    const t2 = isMobileDevice() ? window.setTimeout(refresh, 1500) : undefined;
     window.addEventListener('focus', refresh);
     return () => {
-      window.clearTimeout(t);
+      window.clearTimeout(t1);
+      if (t2) window.clearTimeout(t2);
       window.removeEventListener('focus', refresh);
     };
   }, []);
@@ -311,8 +355,11 @@ export function useMatchFloatingWindow({
       }
     }
 
+    const main = remoteVideoRef.current;
+    if (main) await exitWebkitVideoPiP(main);
+
     setIsFloatingOpen(false);
-  }, []);
+  }, [remoteVideoRef]);
 
   const buildDocumentPiPWindow = useCallback(
     (pipWin: Window) => {
@@ -460,10 +507,8 @@ export function useMatchFloatingWindow({
   }, [canOpenFloating, getRemoteStream, syncStreamToPiP, buildDocumentPiPWindow, cleanupDocumentPiP]);
 
   const openVideoPiP = useCallback(async (): Promise<boolean> => {
-    if (isMobileDevice()) return false;
-
     const el = remoteVideoRef.current;
-    if (!el?.srcObject || !document.pictureInPictureEnabled) return false;
+    if (!el?.srcObject || !canUseVideoPiP()) return false;
 
     suppressMediaSessionControls();
 
@@ -471,9 +516,20 @@ export function useMatchFloatingWindow({
       if (document.pictureInPictureElement && document.pictureInPictureElement !== el) {
         await document.exitPictureInPicture();
       }
-      if (document.pictureInPictureElement !== el) {
-        await el.requestPictureInPicture();
+
+      const wk = el as WebkitVideo;
+      if (document.pictureInPictureEnabled && typeof el.requestPictureInPicture === 'function') {
+        if (document.pictureInPictureElement !== el) {
+          await el.requestPictureInPicture();
+        }
+      } else if (wk.webkitSupportsPresentationMode?.('picture-in-picture') && wk.webkitSetPresentationMode) {
+        if (wk.webkitPresentationMode !== 'picture-in-picture') {
+          wk.webkitSetPresentationMode('picture-in-picture');
+        }
+      } else {
+        return false;
       }
+
       modeRef.current = 'video';
       setPipMode('video');
       setIsFloatingOpen(true);
@@ -493,15 +549,9 @@ export function useMatchFloatingWindow({
     if (cap === 'document') {
       const ok = await openDocumentPiP();
       if (ok) return true;
-      if (!isMobileDevice()) return openVideoPiP();
-      return false;
     }
 
-    if (cap === 'video' && !isMobileDevice()) {
-      return openVideoPiP();
-    }
-
-    return false;
+    return openVideoPiP();
   }, [canOpenFloating, openDocumentPiP, openVideoPiP]);
 
   const disableFloating = useCallback(async () => {
@@ -509,12 +559,17 @@ export function useMatchFloatingWindow({
   }, [cleanupAll]);
 
   const toggleFloating = useCallback(async () => {
-    if (isFloatingOpen || pipWindowRef.current || document.pictureInPictureElement) {
+    if (
+      isFloatingOpen ||
+      pipWindowRef.current ||
+      document.pictureInPictureElement ||
+      isVideoPiPActive(remoteVideoRef.current)
+    ) {
       await disableFloating();
       return false;
     }
     return enableFloating();
-  }, [isFloatingOpen, enableFloating, disableFloating]);
+  }, [isFloatingOpen, enableFloating, disableFloating, remoteVideoRef]);
 
   useEffect(() => {
     if (!keepFloatingAlive) {
@@ -571,6 +626,47 @@ export function useMatchFloatingWindow({
     document.addEventListener('leavepictureinpicture', onExitClassic);
     return () => document.removeEventListener('leavepictureinpicture', onExitClassic);
   }, []);
+
+  /** Safari iOS: salida de PiP vía webkit (no dispara leavepictureinpicture). */
+  useEffect(() => {
+    if (matchStatus !== 'matched') return;
+    let disposed = false;
+    let unbind: (() => void) | undefined;
+    let retryTimer: number | undefined;
+
+    const bind = (video: HTMLVideoElement) => {
+      const onWebkitChange = () => {
+        const wk = video as WebkitVideo;
+        if (wk.webkitPresentationMode === 'picture-in-picture') {
+          modeRef.current = 'video';
+          setPipMode('video');
+          setIsFloatingOpen(true);
+        } else if (modeRef.current === 'video') {
+          modeRef.current = null;
+          setPipMode(null);
+          setIsFloatingOpen(false);
+        }
+      };
+      video.addEventListener('webkitpresentationmodechanged', onWebkitChange);
+      return () => video.removeEventListener('webkitpresentationmodechanged', onWebkitChange);
+    };
+
+    const el = remoteVideoRef.current;
+    if (el) unbind = bind(el);
+    else {
+      retryTimer = window.setTimeout(() => {
+        if (disposed) return;
+        const v = remoteVideoRef.current;
+        if (v) unbind = bind(v);
+      }, 400);
+    }
+
+    return () => {
+      disposed = true;
+      if (retryTimer) window.clearTimeout(retryTimer);
+      unbind?.();
+    };
+  }, [matchStatus, remoteVideoRef]);
 
   useEffect(() => {
     if (!isFloatingOpen) return;

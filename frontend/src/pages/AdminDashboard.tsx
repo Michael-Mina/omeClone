@@ -36,7 +36,11 @@ import { resolveUserIdForIdentify } from '../utils/resolveSocketUserId';
 import type { PublicNsfwDetectionSettings } from '../types/publicNsfwSettings';
 import { startMonitorRecording } from '../utils/adminMonitorRecorder';
 import { MatchChatPanel, type ChatLine } from '../components/MatchChatPanel';
-import { translateForChatDisplay, resolveTranslateTargetLang } from '../utils/chatTranslate';
+import {
+  translateForChatDisplay,
+  resolveTranslateTargetLang,
+  mergeTranslatedChatLine,
+} from '../utils/chatTranslate';
 import { useChatTranslateMode } from '../hooks/useChatTranslateMode';
 import { MD_UP_MQ, useMdUp } from '../hooks/useMdUp';
 import { getAdultZoneDisplay } from '../types/matchZone';
@@ -239,11 +243,7 @@ const AdminDashboard: React.FC = () => {
         snapshot.map(async (m) => {
           const source = m.originalText ?? m.text;
           const seg = await translateForChatDisplay(source, target, tok);
-          return {
-            ...m,
-            text: seg.text,
-            originalText: seg.originalText,
-          };
+          return { ...m, ...mergeTranslatedChatLine(source, seg, m) };
         })
       );
       if (cancelled) return;
@@ -532,11 +532,8 @@ const AdminDashboard: React.FC = () => {
         const st = useAppStore.getState();
         const target = resolveTranslateTargetLang(translateModeRef.current, st.language);
         const seg = await translateForChatDisplay(raw, target, st.token);
-        if (!seg.originalText) return;
         setMonitorChatMessages((prev) =>
-          prev.map((m) =>
-            m.id === lineId ? { ...m, text: seg.text, originalText: seg.originalText } : m
-          )
+          prev.map((m) => (m.id === lineId ? { ...m, ...mergeTranslatedChatLine(raw, seg, m) } : m))
         );
       })();
     };

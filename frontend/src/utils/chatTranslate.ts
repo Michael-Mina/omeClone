@@ -58,23 +58,31 @@ export async function translateChatText(
   const cached = cacheGet(tgt, raw);
   if (cached !== undefined) return cached;
 
-  const res = await fetch(apiUrl('/api/translate'), {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      text: raw,
-      target_lang: tgt,
-    }),
-  });
+  try {
+    const res = await fetch(apiUrl('/api/translate'), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text: raw,
+        target_lang: tgt,
+      }),
+    });
 
-  if (!res.ok) return text;
-  const data = (await res.json()) as { text?: string };
-  const out = typeof data.text === 'string' ? data.text : text;
-  cacheSet(tgt, raw, out);
-  return out;
+    if (!res.ok) {
+      console.warn('[translate] API', res.status, await res.text().catch(() => ''));
+      return text;
+    }
+    const data = (await res.json()) as { text?: string };
+    const out = typeof data.text === 'string' ? data.text.trim() : text;
+    cacheSet(tgt, raw, out);
+    return out;
+  } catch (err) {
+    console.warn('[translate] fetch failed', err);
+    return text;
+  }
 }
 
 /**
@@ -87,12 +95,27 @@ export async function translateForChatDisplay(
   token: string | null
 ): Promise<{ text: string; originalText?: string }> {
   if (!token?.trim()) return { text: raw };
-  if (!chatLineLikelyNeedsTranslation(raw)) return { text: raw };
+  const trimmed = raw.trim();
+  if (!trimmed || !chatLineLikelyNeedsTranslation(trimmed)) return { text: raw };
   try {
-    const translated = await translateChatText(raw, targetLang, token);
-    if (translated !== raw) return { text: translated, originalText: raw };
+    const translated = await translateChatText(trimmed, targetLang, token);
+    if (translated !== trimmed) return { text: translated, originalText: raw };
     return { text: raw };
   } catch {
     return { text: raw };
   }
+}
+
+/** Aplica traducción a una línea sin perder el texto original guardado. */
+export function mergeTranslatedChatLine(
+  raw: string,
+  seg: { text: string; originalText?: string },
+  existing?: { originalText?: string }
+): { text: string; originalText?: string } {
+  const trimmed = raw.trim();
+  const originalText =
+    seg.originalText ??
+    existing?.originalText ??
+    (seg.text !== trimmed && seg.text !== raw ? raw : undefined);
+  return { text: seg.text, originalText };
 }

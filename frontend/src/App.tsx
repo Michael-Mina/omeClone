@@ -13,7 +13,11 @@ import type { NsfwEnforcementRuntime } from './hooks/useNsfwEnforcement';
 import { MatchChatPanel, type ChatLine } from './components/MatchChatPanel';
 import { MatchSpeedDial, type SpeedDialAction } from './components/MatchSpeedDial';
 import { MATCH_ZONE_META, getAdultZoneDisplay, userMeetsAdultZone } from './types/matchZone';
-import { translateForChatDisplay, resolveTranslateTargetLang } from './utils/chatTranslate';
+import {
+  translateForChatDisplay,
+  resolveTranslateTargetLang,
+  mergeTranslatedChatLine,
+} from './utils/chatTranslate';
 import { languageLabel } from './data/profileOptions';
 import { apiUrl } from './config/apiBase';
 import { useChatTranslateMode } from './hooks/useChatTranslateMode';
@@ -160,11 +164,7 @@ function App() {
         snapshot.map(async (m) => {
           const source = m.originalText ?? m.text;
           const seg = await translateForChatDisplay(source, target, tok);
-          return {
-            ...m,
-            text: seg.text,
-            originalText: seg.originalText,
-          };
+          return { ...m, ...mergeTranslatedChatLine(source, seg, m) };
         })
       );
       if (cancelled) return;
@@ -400,11 +400,8 @@ function App() {
         const st = useAppStore.getState();
         const target = resolveTranslateTargetLang(translateModeRef.current, st.language);
         const seg = await translateForChatDisplay(raw, target, st.token);
-        if (!seg.originalText) return;
         setChatMessages((prev) =>
-          prev.map((m) =>
-            m.id === lineId ? { ...m, text: seg.text, originalText: seg.originalText } : m
-          )
+          prev.map((m) => (m.id === lineId ? { ...m, ...mergeTranslatedChatLine(raw, seg, m) } : m))
         );
       })();
     };
@@ -814,7 +811,7 @@ function App() {
             playsInline
             controls={false}
             controlsList="nodownload nofullscreen noremoteplayback noplaybackrate"
-            disablePictureInPicture={!mdUp}
+            disablePictureInPicture={false}
             disableRemotePlayback
             className="absolute inset-0 w-full h-full object-cover"
             style={{
