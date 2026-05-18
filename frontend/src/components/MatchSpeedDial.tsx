@@ -15,8 +15,6 @@ export type SpeedDialAction = {
 type Props = {
   actions: SpeedDialAction[];
   className?: string;
-  /** Si true, el dial permanece abierto (p. ej. pantalla completa con salida visible). */
-  forceOpen?: boolean;
 };
 
 function actionToneClass(tone: SpeedDialAction['tone'], active?: boolean): string {
@@ -41,12 +39,12 @@ function actionToneClass(tone: SpeedDialAction['tone'], active?: boolean): strin
   return 'bg-gray-900/95 border-gray-700 text-gray-100 hover:border-gray-500 hover:bg-gray-800';
 }
 
-export function MatchSpeedDial({ actions, className = '', forceOpen = false }: Props) {
+export function MatchSpeedDial({ actions, className = '' }: Props) {
   const [open, setOpen] = useState(false);
   const menuId = useId();
   const visible = actions.filter((a) => !a.hidden);
 
-  const isOpen = forceOpen || open;
+  const isOpen = open;
 
   const close = useCallback(() => setOpen(false), []);
 
@@ -63,7 +61,7 @@ export function MatchSpeedDial({ actions, className = '', forceOpen = false }: P
 
   return (
     <>
-      {isOpen && !forceOpen && (
+      {isOpen && (
         <button
           type="button"
           className="fixed inset-0 z-[24] cursor-default bg-black/25 backdrop-blur-[1px]"
@@ -78,10 +76,7 @@ export function MatchSpeedDial({ actions, className = '', forceOpen = false }: P
           aria-expanded={isOpen}
           aria-controls={menuId}
           aria-haspopup="true"
-          onClick={() => {
-            if (forceOpen) return;
-            setOpen((v) => !v);
-          }}
+          onClick={() => setOpen((v) => !v)}
           className={`relative z-[26] h-11 w-11 shrink-0 rounded-full flex items-center justify-center shadow-xl border ring-1 ring-white/10 transition-all duration-200 active:scale-95 ${
             isOpen
               ? 'bg-gradient-to-br from-blue-600 to-indigo-700 border-blue-400/50 text-white rotate-0'
@@ -116,7 +111,7 @@ export function MatchSpeedDial({ actions, className = '', forceOpen = false }: P
               onClick={() => {
                 if (action.disabled) return;
                 action.onClick();
-                if (!forceOpen) close();
+                close();
               }}
               className={`group flex items-center gap-2 transition-all duration-200 disabled:opacity-40 disabled:pointer-events-none ${
                 isOpen ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'

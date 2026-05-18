@@ -31,6 +31,35 @@ export function supportsPipButton(cap: PipCapability): boolean {
   return cap !== 'none' || isMobileDevice();
 }
 
+/** Evita que el navegador muestre prev/play/next en PiP de vídeo (Media Session). */
+function suppressMediaSessionControls(): void {
+  if (!('mediaSession' in navigator)) return;
+  const ms = navigator.mediaSession;
+  try {
+    ms.metadata = null;
+    ms.playbackState = 'none';
+  } catch {
+    /* noop */
+  }
+  const actions: MediaSessionAction[] = [
+    'play',
+    'pause',
+    'previoustrack',
+    'nexttrack',
+    'seekbackward',
+    'seekforward',
+    'seekto',
+    'stop',
+  ];
+  for (const action of actions) {
+    try {
+      ms.setActionHandler(action, null);
+    } catch {
+      /* noop */
+    }
+  }
+}
+
 function injectPiPStyles(doc: Document): void {
   const style = doc.createElement('style');
   style.textContent = `
@@ -105,7 +134,6 @@ export function useMatchFloatingWindow({
 }: Options) {
   const [isFloatingOpen, setIsFloatingOpen] = useState(false);
   const [pipMode, setPipMode] = useState<PipMode>(null);
-  const [floatingError, setFloatingError] = useState<string | null>(null);
   const [pipCapability, setPipCapability] = useState<PipCapability>(() =>
     typeof window !== 'undefined' ? getPipCapability() : 'none'
   );
@@ -248,6 +276,8 @@ export function useMatchFloatingWindow({
   }, []);
 
   const cleanupAll = useCallback(async () => {
+    suppressMediaSessionControls();
+
     const w = pipWindowRef.current;
     pipWindowRef.current = null;
     pipVideoRef.current = null;
@@ -353,11 +383,15 @@ export function useMatchFloatingWindow({
         callbacksRef.current.onFocusApp();
       });
 
-      bar.append(btnMic, btnNext, btnMax);
+      const mobileUi = isMobileDevice();
+      if (mobileUi) {
+        bar.append(btnMax);
+      } else {
+        bar.append(btnMic, btnNext, btnMax);
+        updateMicButton(micMuted);
+      }
       wrap.append(videoWrap, bar);
       doc.body.append(wrap);
-
-      updateMicButton(micMuted);
     },
     [micMuted, updateMicButton]
   );
@@ -366,23 +400,21 @@ export function useMatchFloatingWindow({
     const api = getDocPiP();
     if (!api || !canOpenFloating) return false;
 
+    suppressMediaSessionControls();
+
     if (api.window && !api.window.closed) {
       pipWindowRef.current = api.window;
       modeRef.current = 'document';
       setPipMode('document');
       await syncStreamToPiP();
       setIsFloatingOpen(true);
-      setFloatingError(null);
       return true;
     }
 
     if (openingRef.current) return false;
 
     const stream = getRemoteStream();
-    if (!stream) {
-      setFloatingError('Aún no hay vídeo. Espera a que conecte.');
-      return false;
-    }
+    if (!stream) return false;
 
     if (document.pictureInPictureElement) {
       try {
@@ -393,7 +425,6 @@ export function useMatchFloatingWindow({
     }
 
     openingRef.current = true;
-    setFloatingError(null);
 
     const mobile = window.matchMedia('(max-width: 768px)').matches;
 
@@ -422,16 +453,19 @@ export function useMatchFloatingWindow({
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn('[PiP] Document PiP falló:', msg);
-      setFloatingError('No se pudo abrir la ventana flotante.');
       return false;
     } finally {
       openingRef.current = false;
     }
   }, [canOpenFloating, getRemoteStream, syncStreamToPiP, buildDocumentPiPWindow, cleanupDocumentPiP]);
 
-  const openVideoPiP = useCallback(async (asFallback = false): Promise<boolean> => {
+  const openVideoPiP = useCallback(async (): Promise<boolean> => {
+    if (isMobileDevice()) return false;
+
     const el = remoteVideoRef.current;
     if (!el?.srcObject || !document.pictureInPictureEnabled) return false;
+
+    suppressMediaSessionControls();
 
     try {
       if (document.pictureInPictureElement && document.pictureInPictureElement !== el) {
@@ -443,11 +477,6 @@ export function useMatchFloatingWindow({
       modeRef.current = 'video';
       setPipMode('video');
       setIsFloatingOpen(true);
-      setFloatingError(
-        asFallback
-          ? 'Vídeo flotante sin controles en ventana. Usa la barra inferior de la app.'
-          : null
-      );
       return true;
     } catch (err) {
       console.warn('[PiP] Video PiP falló:', err);
@@ -456,10 +485,7 @@ export function useMatchFloatingWindow({
   }, [remoteVideoRef]);
 
   const enableFloating = useCallback(async () => {
-    if (!canOpenFloating) {
-      setFloatingError('Conéctate con alguien primero.');
-      return false;
-    }
+    if (!canOpenFloating) return false;
 
     const cap = getPipCapability();
     setPipCapability(cap);
@@ -467,24 +493,18 @@ export function useMatchFloatingWindow({
     if (cap === 'document') {
       const ok = await openDocumentPiP();
       if (ok) return true;
-      return openVideoPiP(true);
-    }
-
-    if (cap === 'video') {
-      return openVideoPiP(isMobileDevice());
-    }
-
-    if (isMobileDevice()) {
-      setFloatingError('Usa Chrome en Android para ventana flotante con controles propios.');
+      if (!isMobileDevice()) return openVideoPiP();
       return false;
     }
 
-    setFloatingError('Tu navegador no admite ventana flotante.');
+    if (cap === 'video' && !isMobileDevice()) {
+      return openVideoPiP();
+    }
+
     return false;
   }, [canOpenFloating, openDocumentPiP, openVideoPiP]);
 
   const disableFloating = useCallback(async () => {
-    setFloatingError(null);
     await cleanupAll();
   }, [cleanupAll]);
 
@@ -563,37 +583,9 @@ export function useMatchFloatingWindow({
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, [isFloatingOpen, syncStreamToPiP]);
 
-  /** Controles en auriculares / pantalla bloqueada (móvil). */
   useEffect(() => {
-    if (!isFloatingOpen || !('mediaSession' in navigator)) return;
-
-    const ms = navigator.mediaSession;
-    try {
-      ms.metadata = new MediaMetadata({ title: 'Albedrío', artist: 'Videollamada' });
-    } catch {
-      /* noop */
-    }
-
-    const onNextHandler = () => callbacksRef.current.onNext();
-    const onMicHandler = () => callbacksRef.current.onToggleMic();
-
-    try {
-      ms.setActionHandler('nexttrack', onNextHandler);
-      ms.setActionHandler('play', onMicHandler);
-      ms.setActionHandler('pause', onMicHandler);
-    } catch {
-      /* noop */
-    }
-
-    return () => {
-      try {
-        ms.setActionHandler('nexttrack', null);
-        ms.setActionHandler('play', null);
-        ms.setActionHandler('pause', null);
-      } catch {
-        /* noop */
-      }
-    };
+    if (!isFloatingOpen) return;
+    suppressMediaSessionControls();
   }, [isFloatingOpen]);
 
   return {
@@ -601,12 +593,10 @@ export function useMatchFloatingWindow({
     showPipButton,
     pipMode,
     isFloatingOpen,
-    floatingError,
     enableFloating,
     disableFloating,
     toggleFloating,
     focusMainAndClosePip,
     supportsDocumentPiP: pipCapability === 'document',
-    showInAppPipControls: isFloatingOpen && pipMode === 'video',
   };
 }

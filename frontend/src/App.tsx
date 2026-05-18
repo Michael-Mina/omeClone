@@ -485,10 +485,7 @@ function App() {
   const {
     showPipButton,
     isFloatingOpen,
-    floatingError,
     toggleFloating,
-    focusMainAndClosePip,
-    showInAppPipControls,
   } = useMatchFloatingWindow({
     matchStatus,
     remoteVideoRef,
@@ -505,20 +502,6 @@ function App() {
 
   const speedDialActions = useMemo((): SpeedDialAction[] => {
     const actions: SpeedDialAction[] = [
-      {
-        id: 'next',
-        label: matchStatus === 'idle' ? 'Iniciar búsqueda' : 'Siguiente persona',
-        icon:
-          matchStatus === 'idle' ? (
-            <Play size={20} fill="currentColor" className="ml-0.5" />
-          ) : (
-            <SkipForward size={20} fill="currentColor" />
-          ),
-        onClick: handleStartNext,
-        disabled: matchStatus === 'waiting' || matchStatus === 'stopped',
-        hidden: matchStatus === 'stopped',
-        tone: 'blue',
-      },
       {
         id: 'mic',
         label: micMuted ? 'Activar micrófono' : 'Silenciar micrófono',
@@ -550,15 +533,6 @@ function App() {
         active: isFullscreen,
         tone: 'emerald',
       },
-      {
-        id: 'stop',
-        label: 'Detener',
-        icon: <XCircle size={20} strokeWidth={2} />,
-        onClick: handleStop,
-        disabled: matchStatus === 'idle' || matchStatus === 'stopped',
-        hidden: matchStatus === 'idle',
-        tone: 'danger',
-      },
     ];
 
     if (!mdUp && mobilePipHidden) {
@@ -589,11 +563,9 @@ function App() {
     mdUp,
     mobilePipHidden,
     mobileChatHidden,
-    handleStartNext,
     toggleMicMuted,
     toggleFloating,
     toggleFullscreen,
-    handleStop,
   ]);
 
   const handleResume = useCallback(() => {
@@ -842,7 +814,7 @@ function App() {
             playsInline
             controls={false}
             controlsList="nodownload nofullscreen noremoteplayback noplaybackrate"
-            disablePictureInPicture={false}
+            disablePictureInPicture={!mdUp}
             disableRemotePlayback
             className="absolute inset-0 w-full h-full object-cover"
             style={{
@@ -919,18 +891,8 @@ function App() {
           
           <MatchSpeedDial
             actions={speedDialActions}
-            forceOpen={isFullscreen}
             className="absolute top-3 right-3 md:top-4 md:right-4"
           />
-
-          {floatingError && (
-            <p
-              role="alert"
-              className="absolute top-[4.5rem] right-3 md:top-20 md:right-4 z-[24] max-w-[220px] px-2.5 py-1.5 rounded-lg bg-amber-950/95 border border-amber-600/60 text-amber-100 text-[10px] leading-snug pointer-events-none"
-            >
-              {floatingError}
-            </p>
-          )}
 
           {/* Status badge */}
           <div className="absolute top-3 left-3 md:top-4 md:left-4 px-3 py-1.5 bg-black/60 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-2 z-20">
@@ -981,13 +943,40 @@ function App() {
                 <span>Det. →</span>
               </p>
               
-              <div className="hidden md:flex items-center justify-center">
+              <div className="hidden md:flex items-center justify-center gap-4 md:gap-6">
+                <button
+                  type="button"
+                  onClick={handleStop}
+                  disabled={matchStatus === 'idle' || matchStatus === 'stopped'}
+                  className="h-11 w-11 md:h-10 md:w-10 shrink-0 rounded-full flex items-center justify-center text-white shadow-md bg-gradient-to-br from-red-600 to-rose-700 ring-1 ring-white/10 transition-all duration-200 hover:shadow-lg hover:shadow-red-900/40 hover:scale-110 hover:ring-2 hover:ring-white/30 hover:brightness-110 active:scale-95 disabled:opacity-30 disabled:hover:scale-100 disabled:hover:shadow-md disabled:pointer-events-none"
+                  id="btn-stop"
+                  title="Detener"
+                  aria-label="Detener conexión"
+                >
+                  <XCircle size={22} strokeWidth={2} />
+                </button>
                 {/* IA — compacto */}
                 <div className="flex items-center gap-1 px-2 py-1 md:px-2.5 md:py-1 rounded-full bg-white/5 border border-white/10 text-[9px] text-gray-400 uppercase tracking-wide font-semibold shrink-0">
                   <ShieldCheck size={11} className="text-green-400 shrink-0" />
                   <span>IA</span>
                   <span className="text-gray-500">24/7</span>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={handleStartNext}
+                  disabled={matchStatus === 'waiting' || matchStatus === 'stopped'}
+                  className="h-11 w-11 md:h-10 md:w-10 shrink-0 rounded-full flex items-center justify-center text-white shadow-md bg-gradient-to-br from-blue-600 to-indigo-700 ring-1 ring-white/10 transition-all duration-200 hover:shadow-lg hover:shadow-blue-900/40 hover:scale-110 hover:ring-2 hover:ring-white/30 hover:brightness-110 active:scale-95 disabled:opacity-30 disabled:hover:scale-100 disabled:hover:shadow-md disabled:pointer-events-none"
+                  id="btn-next"
+                  title={matchStatus === 'idle' ? 'Iniciar' : 'Siguiente'}
+                  aria-label={matchStatus === 'idle' ? 'Iniciar búsqueda' : 'Siguiente persona'}
+                >
+                  {matchStatus === 'idle' ? (
+                    <Play size={22} fill="currentColor" className="ml-0.5" />
+                  ) : (
+                    <SkipForward size={22} fill="currentColor" />
+                  )}
+                </button>
 
               </div>
             </div>
@@ -1071,46 +1060,6 @@ function App() {
             <div className="relative flex-1 min-h-0 bg-black">
               {localCameraMarkup}
             </div>
-          </div>
-        )}
-
-        {showInAppPipControls && (
-          <div
-            className="fixed z-[48] left-0 right-0 bottom-0 flex items-center justify-center gap-3 px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-gray-950/95 border-t border-white/10 backdrop-blur-md fullscreen:hidden"
-            role="toolbar"
-            aria-label="Controles videollamada flotante"
-          >
-            <button
-              type="button"
-              onClick={() => toggleMicMuted()}
-              className={`h-12 w-12 shrink-0 rounded-full flex items-center justify-center border shadow-lg active:scale-95 ${
-                micMuted
-                  ? 'bg-red-900/95 border-red-600 text-red-200'
-                  : 'bg-gray-800 border-gray-600 text-gray-100'
-              }`}
-              title={micMuted ? 'Activar micrófono' : 'Silenciar'}
-              aria-label={micMuted ? 'Activar micrófono' : 'Silenciar micrófono'}
-            >
-              {micMuted ? <MicOff size={22} /> : <Mic size={22} />}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleStartNext()}
-              className="h-12 w-12 shrink-0 rounded-full flex items-center justify-center bg-blue-700 border border-blue-500 text-white shadow-lg active:scale-95"
-              title="Siguiente"
-              aria-label="Siguiente persona"
-            >
-              <SkipForward size={22} fill="currentColor" />
-            </button>
-            <button
-              type="button"
-              onClick={() => focusMainAndClosePip()}
-              className="h-12 w-12 shrink-0 rounded-full flex items-center justify-center bg-violet-800 border border-violet-500 text-white shadow-lg active:scale-95"
-              title="Volver a la app"
-              aria-label="Volver a la aplicación"
-            >
-              <Maximize2 size={22} />
-            </button>
           </div>
         )}
 
