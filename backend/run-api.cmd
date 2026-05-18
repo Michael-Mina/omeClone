@@ -1,9 +1,9 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-title OmeTV API (puerto 8002)
+title Albedrío API (puerto 8002)
 echo.
-echo === OmeTV backend ===
+echo === Albedrío backend ===
 echo Carpeta: %CD%
 echo.
 if not exist "venv\Scripts\python.exe" (

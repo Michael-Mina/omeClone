@@ -666,7 +666,7 @@ function App() {
     <div className="flex flex-col h-[100dvh] bg-gray-950 text-white overflow-hidden font-sans">
       {/* Header */}
       <header className="p-3 md:p-4 bg-gray-900/90 backdrop-blur-lg border-b border-gray-800/50 flex justify-between items-center shadow-lg z-30">
-        <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">OmeClone</h1>
+        <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Albedrío</h1>
         <div className="flex items-center gap-2 md:gap-3">
           <button
             onClick={() => navigate('/profile')}

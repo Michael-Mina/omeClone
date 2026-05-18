@@ -17,7 +17,7 @@ def normalize_database_url(url: str) -> str:
 
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "OmeTV Clone API"
+    PROJECT_NAME: str = "Albedrío API"
     
     SECRET_KEY: str = "dev_secret_key_change_in_production"
     ALGORITHM: str = "HS256"

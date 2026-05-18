@@ -108,7 +108,7 @@ export default function Login() {
           <div className="mb-4 shadow-lg shadow-blue-500/25 transform -rotate-3 select-none">
             <img
               src={`${import.meta.env.BASE_URL}favicon.svg`}
-              alt="OmeClone"
+              alt="Albedrío"
               width={64}
               height={64}
               className="w-16 h-16 rounded-2xl"
@@ -152,7 +152,7 @@ export default function Login() {
             </button>
             <h3 className="text-xl font-bold text-white pr-10">Antes de continuar</h3>
             <p className="text-sm text-gray-400 mt-1 mb-5">
-              OmeClone es solo para mayores de 18 años. Indica tus datos para personalizar tu experiencia.
+              Albedrío es solo para mayores de 18 años. Indica tus datos para personalizar tu experiencia.
             </p>
             <form onSubmit={handleAnonymousConfirm} className="space-y-4">
               <div>

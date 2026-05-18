@@ -32,11 +32,11 @@ async def lifespan(_app: FastAPI):
             db.commit()
     finally:
         db.close()
-    _log.warning("[ometv] API lista — prueba: GET /health y GET /api/health en el puerto donde corre uvicorn")
+    _log.warning("[albedrio] API lista — prueba: GET /health y GET /api/health en el puerto donde corre uvicorn")
     yield
 
 
-app = FastAPI(title="OmeTV Clone API", lifespan=lifespan)
+app = FastAPI(title="Albedrío API", lifespan=lifespan)
 
 # Rutas REST antes del wrapper Socket.IO (mismo objeto `app`).
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
@@ -47,7 +47,7 @@ app.include_router(translate.router, prefix="/api", tags=["translate"])
 
 @app.get("/")
 async def root():
-    return {"status": "ok", "message": "OmeTV Clone API is running"}
+    return {"status": "ok", "message": "Albedrío API is running"}
 
 
 @app.get("/health")

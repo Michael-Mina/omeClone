@@ -124,7 +124,7 @@ export function startMonitorRecording(opts: MonitorRecorderOptions): { stop: Mon
       const a = document.createElement('a');
       a.href = url;
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      a.download = `ometv-monitor-${stamp}.${extension}`;
+      a.download = `albedrio-monitor-${stamp}.${extension}`;
       a.click();
       URL.revokeObjectURL(url);
     },

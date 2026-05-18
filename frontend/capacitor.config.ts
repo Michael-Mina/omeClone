@@ -2,7 +2,7 @@ import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.ometv.clone',
-  appName: 'OmeTV Clone',
+  appName: 'Albedrío',
   webDir: 'dist',
   server: {
     androidScheme: 'https',

@@ -238,7 +238,7 @@ const AdminDashboard: React.FC = () => {
     try {
       const h = await fetch(apiUrl('/api/health'));
       if (!h.ok) {
-        return `En ${apiUrl('')} no responde este API OmeTV (prueba /api/health). Suele haber otro programa usando el puerto o uvicorn no está arrancado desde la carpeta backend.`;
+        return `En ${apiUrl('')} no responde el API de Albedrío (prueba /api/health). Suele haber otro programa usando el puerto o uvicorn no está arrancado desde la carpeta backend.`;
       }
       const j = await h.json();
       if (j?.service === 'ometv-api') {
@@ -1261,7 +1261,7 @@ const AdminDashboard: React.FC = () => {
           <div className="flex items-center gap-2 min-w-0 shrink">
             <ShieldCheck size={24} className="text-pink-500 shrink-0 md:w-7 md:h-7" />
             <h1 className="text-lg md:text-2xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600 truncate">
-              OmeClone Control Center
+              Albedrío Control Center
             </h1>
           </div>
           <div className="flex flex-wrap items-center gap-2 justify-end">

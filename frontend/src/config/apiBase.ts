@@ -63,7 +63,7 @@ export function warnIfProductionBackendMissing(): void {
   if (inferRenderSiblingApiOrigin(window.location.hostname)) return;
 
   console.warn(
-    '[omeClone] Sin VITE_BACKEND_URL y el host no sigue *-web.onrender.com → *-api. ' +
+    '[Albedrío] Sin VITE_BACKEND_URL y el host no sigue *-web.onrender.com → *-api. ' +
       'Define VITE_BACKEND_URL en Render y redeploy (o renombra el static a …-web y el API a …-api).'
   );
 }

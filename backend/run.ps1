@@ -1,4 +1,4 @@
-# Arranca el API OmeTV (FastAPI + Socket.IO). Ejecutar desde PowerShell en esta carpeta (backend).
+# Arranca el API de Albedrío (FastAPI + Socket.IO). Ejecutar desde PowerShell en esta carpeta (backend).
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 $py = Join-Path $PSScriptRoot 'venv\Scripts\python.exe'
