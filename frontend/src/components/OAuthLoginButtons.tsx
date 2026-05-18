@@ -14,6 +14,8 @@ export type OAuthTokenPayload = {
   user_id?: number;
   display_name?: string | null;
   exempt_from_ai_censorship?: boolean;
+  is_premium?: boolean;
+  premium_source?: string | null;
 };
 
 type OAuthProviders = {

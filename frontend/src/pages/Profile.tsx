@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
-import { User, LogOut, LogIn, ShieldCheck, Loader2 } from 'lucide-react';
+import { User, LogOut, LogIn, ShieldCheck, Loader2, Crown } from 'lucide-react';
 import {
   GENDER_OPTIONS,
   COUNTRY_OPTIONS,
@@ -20,6 +20,8 @@ type MeJson = {
   language?: string | null;
   birth_year?: number | null;
   is_superuser?: boolean;
+  is_premium?: boolean;
+  premium_source?: string | null;
 };
 
 type ProfileBaseline = {
@@ -32,7 +34,8 @@ type ProfileBaseline = {
 
 export default function Profile() {
   const navigate = useNavigate();
-  const { userId, displayName, role, isAnonymous, setAuth, token, salaSessionActive } = useAppStore();
+  const { userId, displayName, role, isAnonymous, isPremium, setAuth, token, salaSessionActive } =
+    useAppStore();
 
   const name = displayName || (isAnonymous ? 'Anónimo' : 'Usuario');
   const initial = (name.trim()[0] || 'U').toUpperCase();
@@ -122,6 +125,8 @@ export default function Profile() {
       language: data.language ?? null,
       birthYear: data.birth_year ?? null,
       exemptFromAiCensorship: st.exemptFromAiCensorship,
+      isPremium: Boolean(data.is_premium),
+      premiumSource: typeof data.premium_source === 'string' ? data.premium_source : null,
     });
   };
 
@@ -276,6 +281,11 @@ export default function Profile() {
                     ANÓNIMO
                   </span>
                 )}
+                {isPremium && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-black px-2 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                    <Crown size={12} /> PREMIUM
+                  </span>
+                )}
               </div>
               <p className="text-sm text-gray-400 mt-1">
                 ID: <span className="font-mono text-gray-300">{userId || '—'}</span>
@@ -324,6 +334,27 @@ export default function Profile() {
                   </div>
                 ) : (
                   <>
+                    {!isAnonymous && (
+                      <div className="bg-gradient-to-br from-amber-950/40 to-gray-950/40 border border-amber-900/40 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <h3 className="text-sm font-bold text-amber-200 uppercase tracking-wide flex items-center gap-2">
+                            <Crown size={16} /> Albedrío Premium
+                          </h3>
+                          <p className="text-xs text-gray-400 mt-1">
+                            {isPremium
+                              ? 'Tienes beneficios Premium activos.'
+                              : 'Suscripción mensual con funciones exclusivas.'}
+                          </p>
+                        </div>
+                        <Link
+                          to="/premium"
+                          className="text-sm font-semibold px-4 py-2 rounded-xl bg-amber-500/20 text-amber-200 border border-amber-500/40 hover:bg-amber-500/30 transition-colors"
+                        >
+                          {isPremium ? 'Gestionar' : 'Ver planes'}
+                        </Link>
+                      </div>
+                    )}
+
                     <div className="bg-gray-950/40 border border-gray-800 rounded-2xl p-5 space-y-4">
                       <h3 className="text-sm font-bold text-white uppercase tracking-wide">Cuenta</h3>
                       <div>

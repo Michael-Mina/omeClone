@@ -34,6 +34,8 @@ export default function Login() {
     const role = data.is_superuser ? 'superadmin' : 'user';
     setAuth(String(data.user_id || 'user'), data.access_token, role, data.display_name || null, false, {
       exemptFromAiCensorship: Boolean(data.exempt_from_ai_censorship),
+      isPremium: Boolean(data.is_premium),
+      premiumSource: typeof data.premium_source === 'string' ? data.premium_source : null,
     });
   };
 
@@ -86,6 +88,8 @@ export default function Login() {
             language: anonLanguage,
             birthYear: anonBirthYear,
             exemptFromAiCensorship: Boolean(data.exempt_from_ai_censorship),
+            isPremium: Boolean(data.is_premium),
+            premiumSource: typeof data.premium_source === 'string' ? data.premium_source : null,
           }
         );
       } else {

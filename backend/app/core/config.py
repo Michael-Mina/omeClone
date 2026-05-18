@@ -34,6 +34,17 @@ class Settings(BaseSettings):
     # OAuth Google (IDs públicos; el front los obtiene de GET /api/auth/oauth/providers)
     GOOGLE_OAUTH_CLIENT_IDS: Optional[str] = None
 
+    # Stripe (suscripción Premium mensual; Adaptive Pricing en Checkout)
+    STRIPE_SECRET_KEY: Optional[str] = None
+    STRIPE_PUBLISHABLE_KEY: Optional[str] = None
+    STRIPE_WEBHOOK_SECRET: Optional[str] = None
+    STRIPE_PRICE_ID: Optional[str] = None
+    FRONTEND_BASE_URL: str = "http://localhost:5173"
+
+    @property
+    def frontend_base_url(self) -> str:
+        return (self.FRONTEND_BASE_URL or "http://localhost:5173").rstrip("/")
+
     @property
     def google_oauth_client_id_list(self) -> List[str]:
         raw = (self.GOOGLE_OAUTH_CLIENT_IDS or "").strip()

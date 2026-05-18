@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Flame, ShieldCheck, User, Video, ArrowRight } from 'lucide-react';
+import { Flame, ShieldCheck, User, Video, ArrowRight, Crown } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { socket } from '../sockets/socket';
 import type { MatchZone } from '../types/matchZone';
@@ -19,6 +19,7 @@ export default function SalasPage() {
     stopMatch,
     displayName,
     isAnonymous,
+    isPremium,
     birthYear,
     country,
   } = useAppStore();
@@ -69,16 +70,32 @@ export default function SalasPage() {
           </h1>
           <p className="text-sm text-gray-400 mt-1">Elige una sala antes de conectar</p>
         </div>
-        <button
-          type="button"
-          onClick={() => navigate('/profile')}
-          className="px-3 py-2 text-xs font-semibold rounded-xl flex items-center gap-2 bg-gray-800/90 border border-gray-700 hover:bg-gray-700 transition-colors"
-        >
-          <User size={16} />
-          <span className="max-w-[120px] truncate hidden sm:inline">
-            {displayName || (isAnonymous ? 'Anónimo' : 'Perfil')}
-          </span>
-        </button>
+        <div className="flex items-center gap-2">
+          {!isAnonymous && (
+            <button
+              type="button"
+              onClick={() => navigate('/premium')}
+              className={`px-3 py-2 text-xs font-semibold rounded-xl flex items-center gap-1.5 border transition-colors ${
+                isPremium
+                  ? 'bg-amber-500/15 border-amber-500/50 text-amber-300'
+                  : 'bg-gray-800/90 border-gray-700 text-gray-300 hover:bg-gray-700'
+              }`}
+            >
+              <Crown size={16} />
+              <span className="hidden sm:inline">{isPremium ? 'Activo' : 'Obtener'}</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => navigate('/profile')}
+            className="px-3 py-2 text-xs font-semibold rounded-xl flex items-center gap-2 bg-gray-800/90 border border-gray-700 hover:bg-gray-700 transition-colors"
+          >
+            <User size={16} />
+            <span className="max-w-[120px] truncate hidden sm:inline">
+              {displayName || (isAnonymous ? 'Anónimo' : 'Perfil')}
+            </span>
+          </button>
+        </div>
       </header>
 
       <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 pb-8 md:pb-12 max-w-5xl mx-auto w-full">

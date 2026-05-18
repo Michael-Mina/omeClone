@@ -6,11 +6,11 @@ import socketio
 import logging
 import os
 
-from app.api.routes import auth, admin, translate, settings_public
+from app.api.routes import auth, admin, translate, settings_public, billing
 from app.api.websockets import sio
 from app.db.base import Base
 from app.db.session import engine
-from app.db.sqlite_compat import ensure_user_table_columns
+from app.db.sqlite_compat import ensure_user_table_columns, ensure_system_settings_columns
 from app.models.user import User  # Importar para que Base conozca la tabla
 from app.models.system_settings import SystemSettings  # tabla system_settings
 
@@ -19,6 +19,7 @@ _log = logging.getLogger("uvicorn.error")
 # Crear tablas en SQLite si no existen + alinear columnas si el modelo creció
 Base.metadata.create_all(bind=engine)
 ensure_user_table_columns(engine)
+ensure_system_settings_columns(engine)
 
 
 @asynccontextmanager
@@ -43,6 +44,7 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(settings_public.router, prefix="/api/settings", tags=["settings"])
 app.include_router(translate.router, prefix="/api", tags=["translate"])
+app.include_router(billing.router, prefix="/api/billing", tags=["billing"])
 
 
 @app.get("/")

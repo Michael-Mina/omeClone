@@ -324,9 +324,19 @@ function App() {
         const fresh = (await ensureValidAccessToken()) ?? tok;
         const r = await fetch(apiUrl('/api/auth/me'), { headers: { Authorization: `Bearer ${fresh}` } });
         if (!r.ok) return;
-        const j = (await r.json()) as { exempt_from_ai_censorship?: unknown };
+        const j = (await r.json()) as {
+          exempt_from_ai_censorship?: unknown;
+          is_premium?: unknown;
+          premium_source?: unknown;
+        };
         if (typeof j.exempt_from_ai_censorship === 'boolean') {
           useAppStore.getState().applyServerExemptionSync({ exemptFromAiCensorship: j.exempt_from_ai_censorship });
+        }
+        if (typeof j.is_premium === 'boolean') {
+          useAppStore.getState().applyPremiumSync({
+            is_premium: j.is_premium,
+            premium_source: typeof j.premium_source === 'string' ? j.premium_source : null,
+          });
         }
       } catch {
         /* ignore */
@@ -429,6 +439,23 @@ function App() {
     };
     socket.on('exemptions_updated', onExemptionsUpdated);
 
+    const onPremiumUpdated = (p: {
+      user_id?: number;
+      is_premium?: boolean;
+      premium_source?: string | null;
+    }) => {
+      const st = useAppStore.getState();
+      const uid = st.userId?.trim();
+      if (!uid || p.user_id == null || String(p.user_id) !== uid) return;
+      if (typeof p.is_premium === 'boolean') {
+        st.applyPremiumSync({
+          is_premium: p.is_premium,
+          premium_source: p.premium_source ?? null,
+        });
+      }
+    };
+    socket.on('premium_updated', onPremiumUpdated);
+
     const onNsfwGlobalSettingsUpdated = (p: PublicNsfwDetectionSettings) => {
       if (
         typeof p?.probability_threshold !== 'number' ||
@@ -451,6 +478,7 @@ function App() {
       socket.off('online_users_count');
       socket.off('chat_message', onChatMessage);
       socket.off('exemptions_updated', onExemptionsUpdated);
+      socket.off('premium_updated', onPremiumUpdated);
       socket.off('nsfw_global_settings_updated', onNsfwGlobalSettingsUpdated);
     };
   }, [resumeMatchmakingAfterConnect, setMatchStatus, setMatchData]);
@@ -941,11 +969,11 @@ function App() {
             <div className="bg-black/55 backdrop-blur-md px-3 py-2 md:py-2.5 pb-3 md:border-t border-white/5">
               {/* Móvil: solo instrucciones */}
               <p className="text-[9px] text-center text-gray-500 uppercase tracking-widest font-medium flex items-center justify-center gap-2 md:hidden">
-                <span>← Sig.</span>
+                <span>← Det.</span>
                 <span className="w-1 h-1 rounded-full bg-gray-600 shrink-0"></span>
                 <span>Desliza</span>
                 <span className="w-1 h-1 rounded-full bg-gray-600 shrink-0"></span>
-                <span>Det. →</span>
+                <span>Sig. →</span>
               </p>
               
               <div className="hidden md:flex items-center justify-center gap-4 md:gap-6">

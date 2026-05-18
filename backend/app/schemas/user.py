@@ -36,6 +36,9 @@ class UserResponse(UserBase):
     nsfw_strike_count: int = 0
     nsfw_ban_until: Optional[datetime] = None
     nsfw_permanent_ban: bool = False
+    is_premium: bool = False
+    premium_source: Optional[str] = None
+    premium_until: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -66,6 +69,9 @@ class Token(BaseModel):
     nsfw_strike_count: int = 0
     nsfw_ban_until: Optional[datetime] = None
     nsfw_permanent_ban: bool = False
+    is_premium: bool = False
+    premium_source: Optional[str] = None
+    premium_until: Optional[datetime] = None
 
 
 class UserExemptionsUpdate(BaseModel):

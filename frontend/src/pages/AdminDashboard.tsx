@@ -21,6 +21,8 @@ import {
   Square,
   MessageSquare,
   SlidersHorizontal,
+  Crown,
+  CreditCard,
 } from 'lucide-react';
 import { socket } from '../sockets/socket';
 import {
@@ -67,6 +69,8 @@ interface DashboardUser {
   connected_to: ConnectedPeer | null;
   exempt_from_ban?: boolean;
   exempt_from_ai_censorship?: boolean;
+  is_premium?: boolean;
+  premium_source?: string | null;
   /** Sala Socket.IO del match (misma para ambos usuarios); sirve para retransmitir chat al monitor. */
   match_room_id?: string | null;
   /** Cola de matchmaking: moderated | adult (solo si está conectado). */
@@ -202,6 +206,9 @@ const AdminDashboard: React.FC = () => {
   const [nsfwGlobalSnapshot, setNsfwGlobalSnapshot] = useState<PublicNsfwDetectionSettings | null>(null);
   const [nsfwIntensityDraft, setNsfwIntensityDraft] = useState(50);
   const [nsfwGlobalSaving, setNsfwGlobalSaving] = useState(false);
+  const [paymentsEnabled, setPaymentsEnabled] = useState(false);
+  const [stripeConfigured, setStripeConfigured] = useState(false);
+  const [billingToggleSaving, setBillingToggleSaving] = useState(false);
 
   const spyVideoPrimaryRef = useRef<HTMLVideoElement>(null);
   const spyVideoPeerRef = useRef<HTMLVideoElement>(null);
@@ -362,6 +369,85 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  const fetchBillingSettings = async () => {
+    try {
+      const { token: tok } = useAppStore.getState();
+      if (!tok) return;
+      const r = await fetch(apiUrl('/api/admin/billing-settings'), {
+        headers: { Authorization: `Bearer ${tok}` },
+      });
+      if (!r.ok) return;
+      const j = (await r.json()) as { payments_enabled?: boolean; stripe_configured?: boolean };
+      setPaymentsEnabled(Boolean(j.payments_enabled));
+      setStripeConfigured(Boolean(j.stripe_configured));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const saveBillingSettings = async (enabled: boolean) => {
+    const { token: tok } = useAppStore.getState();
+    if (!tok) return;
+    setBillingToggleSaving(true);
+    try {
+      const r = await fetch(apiUrl('/api/admin/billing-settings'), {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payments_enabled: enabled }),
+      });
+      const data = (await r.json().catch(() => ({}))) as {
+        detail?: unknown;
+        payments_enabled?: boolean;
+        stripe_configured?: boolean;
+      };
+      if (!r.ok) {
+        alert(typeof data.detail === 'string' ? data.detail : 'No se pudo guardar la configuración de pagos');
+        return;
+      }
+      setPaymentsEnabled(Boolean(data.payments_enabled));
+      setStripeConfigured(Boolean(data.stripe_configured));
+    } catch {
+      alert('Error de red al guardar pagos');
+    } finally {
+      setBillingToggleSaving(false);
+    }
+  };
+
+  const patchPremium = async (dbId: number, enabled: boolean) => {
+    try {
+      const { token } = useAppStore.getState();
+      const res = await fetch(apiUrl(`/api/admin/users/${dbId}/premium`), {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        detail?: unknown;
+        is_premium?: boolean;
+        premium_source?: string | null;
+      };
+      if (!res.ok) {
+        alert(typeof data.detail === 'string' ? data.detail : 'No se pudo actualizar Premium');
+        return;
+      }
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.db_user_id === dbId
+            ? {
+                ...u,
+                is_premium: Boolean(data.is_premium),
+                premium_source: data.premium_source ?? null,
+              }
+            : u
+        )
+      );
+      void fetchUsers({ silent: true });
+    } catch (err) {
+      console.error('patchPremium', err);
+      alert('Error de conexión al actualizar Premium');
+    }
+  };
+
   const nsfwGlobalControlTitle = useMemo(() => {
     const intro =
       'Filtro IA global (NSFW): afecta a todos los que usan el modelo local; exentos / superadmin no cargan modelo. Izquierda = permisivo, derecha = estricto.';
@@ -374,6 +460,7 @@ const AdminDashboard: React.FC = () => {
     queueMicrotask(() => {
       void fetchUsers();
       void fetchNsfwGlobalSettings();
+      void fetchBillingSettings();
     });
     const interval = setInterval(() => void fetchUsers({ silent: true }), 5000);
 
@@ -916,6 +1003,8 @@ const AdminDashboard: React.FC = () => {
     const banExempt = Boolean(user.exempt_from_ban);
     const aiExempt = Boolean(user.exempt_from_ai_censorship);
     const dbId = user.db_user_id;
+    const isPremium = Boolean(user.is_premium);
+    const canGrantPremium = dbId != null && !user.is_anonymous && user.role !== 'superadmin';
     const zoneBadge = adminMatchZoneBadge(user);
 
     return (
@@ -961,6 +1050,11 @@ const AdminDashboard: React.FC = () => {
               </span>
               <span className="text-[10px] text-gray-600">
                 {user.is_anonymous ? 'Anónimo' : 'Registrado'}
+                {isPremium && (
+                  <span className="ml-1 text-amber-400 font-bold" title={`Premium (${user.premium_source || '?'})`}>
+                    ★
+                  </span>
+                )}
               </span>
               {isFav && (
                 <span className="ml-1 text-[9px] text-amber-500 font-bold uppercase tracking-wider">marcado</span>
@@ -1073,6 +1167,24 @@ const AdminDashboard: React.FC = () => {
                 >
                   <Sparkles size={18} />
                 </button>
+                {canGrantPremium && (
+                  <button
+                    type="button"
+                    onClick={() => void patchPremium(dbId, !isPremium)}
+                    title={
+                      isPremium
+                        ? `Premium (${user.premium_source || '?'}) — clic para quitar`
+                        : 'Dar Premium sin pago (beneficios de suscripción)'
+                    }
+                    className={`rounded-lg transition-all ${
+                      isPremium
+                        ? 'bg-amber-900/45 text-amber-300 ring-1 ring-amber-600/40'
+                        : 'bg-gray-800 text-gray-500 hover:text-amber-400 hover:bg-gray-700'
+                    }`}
+                  >
+                    <Crown size={18} />
+                  </button>
+                )}
               </>
             )}
             <button
@@ -1113,6 +1225,8 @@ const AdminDashboard: React.FC = () => {
     const banExempt = Boolean(user.exempt_from_ban);
     const aiExempt = Boolean(user.exempt_from_ai_censorship);
     const dbId = user.db_user_id;
+    const isPremium = Boolean(user.is_premium);
+    const canGrantPremium = dbId != null && !user.is_anonymous && user.role !== 'superadmin';
     const age = approxAge(user.birth_year);
     const zoneBadge = adminMatchZoneBadge(user);
 
@@ -1176,6 +1290,11 @@ const AdminDashboard: React.FC = () => {
               </span>
               <span className="text-gray-700">·</span>
               <span>{user.is_anonymous ? 'Anón.' : 'Reg.'}</span>
+              {isPremium && (
+                <span className="text-amber-400 font-bold" title={`Premium (${user.premium_source || '?'})`}>
+                  ★
+                </span>
+              )}
               {isFav && <span className="text-amber-500 font-bold">★</span>}
             </div>
           </div>
@@ -1269,6 +1388,24 @@ const AdminDashboard: React.FC = () => {
               >
                 <Sparkles size={15} strokeWidth={2} />
               </button>
+              {canGrantPremium && (
+                <button
+                  type="button"
+                  onClick={() => void patchPremium(dbId, !isPremium)}
+                  title={
+                    isPremium
+                      ? `Premium (${user.premium_source || '?'}) — clic para quitar`
+                      : 'Dar Premium sin pago'
+                  }
+                  className={`rounded-md transition-all size-8 inline-flex items-center justify-center ${
+                    isPremium
+                      ? 'bg-amber-900/45 text-amber-300 ring-1 ring-amber-600/40'
+                      : 'bg-gray-800/90 text-gray-500 hover:text-amber-400 hover:bg-gray-700'
+                  }`}
+                >
+                  <Crown size={15} strokeWidth={2} />
+                </button>
+              )}
             </>
           )}
           <button
@@ -1428,6 +1565,29 @@ const AdminDashboard: React.FC = () => {
                 className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-900/80 text-cyan-200 border border-cyan-900 hover:bg-cyan-950/60 disabled:opacity-40 disabled:pointer-events-none shrink-0"
               >
                 {nsfwGlobalSaving ? '…' : 'Guardar'}
+              </button>
+            </div>
+            <div
+              className="flex items-center gap-1.5 bg-gray-800 rounded-full border border-gray-700 px-2 py-0.5 min-w-0"
+              title={
+                stripeConfigured
+                  ? 'Pagos Stripe: checkout y portal en /premium'
+                  : 'Stripe no configurado en el servidor (STRIPE_SECRET_KEY, STRIPE_PRICE_ID)'
+              }
+            >
+              <CreditCard size={12} className="text-amber-400 shrink-0" aria-hidden />
+              <span className="text-[10px] text-gray-400 hidden sm:inline">Pagos</span>
+              <button
+                type="button"
+                disabled={billingToggleSaving || !stripeConfigured}
+                onClick={() => void saveBillingSettings(!paymentsEnabled)}
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-colors shrink-0 disabled:opacity-40 ${
+                  paymentsEnabled
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-600/50'
+                    : 'bg-gray-900/80 text-gray-400 border-gray-700 hover:text-white'
+                }`}
+              >
+                {billingToggleSaving ? '…' : paymentsEnabled ? 'ON' : 'OFF'}
               </button>
             </div>
           </div>

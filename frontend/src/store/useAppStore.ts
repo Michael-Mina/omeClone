@@ -11,6 +11,8 @@ interface AppState {
   isAnonymous: boolean;
   /** Admin: saltar modelo NSFW local (además de superadmin). */
   exemptFromAiCensorship: boolean;
+  isPremium: boolean;
+  premiumSource: string | null;
   gender: string | null;
   country: string | null;
   language: string | null;
@@ -30,12 +32,14 @@ interface AppState {
     role?: 'user' | 'superadmin',
     displayName?: string | null,
     isAnonymous?: boolean,
-    profile?: {
+      profile?: {
       gender?: string | null;
       country?: string | null;
       language?: string | null;
       birthYear?: number | null;
       exemptFromAiCensorship?: boolean;
+      isPremium?: boolean;
+      premiumSource?: string | null;
     } | null
   ) => void;
   setMatchStatus: (status: 'idle' | 'waiting' | 'matched' | 'stopped') => void;
@@ -46,6 +50,10 @@ interface AppState {
   setSalaSessionActive: (active: boolean) => void;
   /** Sincronía desde servidor (admin / socket) sin volver a iniciar sesión. */
   applyServerExemptionSync: (p: { exemptFromAiCensorship: boolean }) => void;
+  applyPremiumSync: (p: {
+    is_premium: boolean;
+    premium_source?: string | null;
+  }) => void;
   /** Solo renueva JWT (p. ej. tras /auth/refresh). */
   updateAccessToken: (token: string) => void;
 }
@@ -59,6 +67,8 @@ export const useAppStore = create<AppState>()(
       displayName: null,
       isAnonymous: false,
       exemptFromAiCensorship: false,
+      isPremium: false,
+      premiumSource: null,
       gender: null,
       country: null,
       language: null,
@@ -78,6 +88,8 @@ export const useAppStore = create<AppState>()(
           displayName,
           isAnonymous,
           exemptFromAiCensorship: profile?.exemptFromAiCensorship ?? false,
+          isPremium: profile?.isPremium ?? false,
+          premiumSource: profile?.premiumSource ?? null,
           gender: profile?.gender ?? null,
           country: profile?.country ?? null,
           language: profile?.language ?? null,
@@ -90,6 +102,11 @@ export const useAppStore = create<AppState>()(
       setMatchZone: (zone) => set({ matchZone: zone }),
       setSalaSessionActive: (active) => set({ salaSessionActive: active }),
       applyServerExemptionSync: (p) => set({ exemptFromAiCensorship: p.exemptFromAiCensorship }),
+      applyPremiumSync: (p) =>
+        set({
+          isPremium: Boolean(p.is_premium),
+          premiumSource: p.premium_source ?? null,
+        }),
       updateAccessToken: (token) => set({ token }),
     }),
     {
@@ -103,6 +120,8 @@ export const useAppStore = create<AppState>()(
         displayName: state.displayName,
         isAnonymous: state.isAnonymous,
         exemptFromAiCensorship: state.exemptFromAiCensorship,
+        isPremium: state.isPremium,
+        premiumSource: state.premiumSource,
         gender: state.gender,
         country: state.country,
         language: state.language,

@@ -7,6 +7,7 @@ import { AppRouteGuard } from './routes/AppRouteGuard';
 import Register from './pages/Register';
 import AdminDashboard from './pages/AdminDashboard';
 import Profile from './pages/Profile';
+import PremiumPage from './pages/PremiumPage';
 import { useAppStore } from './store/useAppStore';
 
 /** Evita enviar a /login antes de que zustand restaure token desde localStorage (F5). */
@@ -89,6 +90,7 @@ export const Router = () => {
 
           {/* Profile */}
           <Route path="/profile" element={token ? <Profile /> : <Navigate to="/login" />} />
+          <Route path="/premium" element={token ? <PremiumPage /> : <Navigate to="/login" />} />
 
           {/* Default route */}
           <Route path="*" element={<Navigate to={getDashboardRoute()} />} />

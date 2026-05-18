@@ -7,7 +7,10 @@ from app.api.deps import get_current_superuser
 from app.schemas.user import UserExemptionsUpdate
 from app.models.system_settings import SystemSettings
 from app.schemas.global_settings import NsfwGlobalPatch, NsfwGlobalAdminOut
+from app.schemas.billing import AdminPremiumPatch, BillingSettingsOut, BillingSettingsPatch
 from app.services.nsfw_client_params import clamp_intensity, intensity_to_client_params
+from app.services.premium import apply_premium_active, clear_premium, user_has_premium, premium_status_dict
+from app.core.config import settings as app_settings
 
 router = APIRouter()
 
@@ -105,6 +108,8 @@ def get_dashboard_users(db: Session = Depends(get_db), current_user: User = Depe
         is_anon = bool(info.get("is_anonymous"))
         exempt_from_ban = False
         exempt_from_ai_censorship = False
+        is_premium = False
+        premium_source = None
         udb = db.get(User, candidate_db_uid) if candidate_db_uid is not None else None
         if udb:
             gender_c = gender_c or udb.gender
@@ -115,6 +120,8 @@ def get_dashboard_users(db: Session = Depends(get_db), current_user: User = Depe
                 is_anon = True
             exempt_from_ban = bool(getattr(udb, "exempt_from_ban", False))
             exempt_from_ai_censorship = bool(getattr(udb, "exempt_from_ai_censorship", False))
+            is_premium = user_has_premium(udb)
+            premium_source = getattr(udb, "premium_source", None)
 
         db_uid = candidate_db_uid if udb is not None else None
 
@@ -134,6 +141,8 @@ def get_dashboard_users(db: Session = Depends(get_db), current_user: User = Depe
             "connected_to": connected_to,
             "exempt_from_ban": exempt_from_ban,
             "exempt_from_ai_censorship": exempt_from_ai_censorship,
+            "is_premium": is_premium,
+            "premium_source": premium_source,
             "match_room_id": room,
             "match_zone": info.get("match_zone") or "moderated",
         })
@@ -177,6 +186,8 @@ def get_dashboard_users(db: Session = Depends(get_db), current_user: User = Depe
             "connected_to": None,
             "exempt_from_ban": bool(getattr(u, "exempt_from_ban", False)),
             "exempt_from_ai_censorship": bool(getattr(u, "exempt_from_ai_censorship", False)),
+            "is_premium": user_has_premium(u),
+            "premium_source": getattr(u, "premium_source", None),
             "match_room_id": None,
             "match_zone": None,
         })
@@ -307,3 +318,62 @@ async def admin_put_nsfw_global(
     payload = dto.as_dict()
     await sio.emit("nsfw_global_settings_updated", payload)
     return NsfwGlobalAdminOut(**payload)
+
+
+@router.get("/billing-settings", response_model=BillingSettingsOut)
+def admin_get_billing_settings(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_superuser),
+):
+    row = _get_or_create_system_settings(db)
+    configured = bool(app_settings.STRIPE_SECRET_KEY and app_settings.STRIPE_PRICE_ID)
+    return BillingSettingsOut(
+        payments_enabled=bool(getattr(row, "payments_enabled", False)),
+        stripe_configured=configured,
+    )
+
+
+@router.put("/billing-settings", response_model=BillingSettingsOut)
+def admin_put_billing_settings(
+    body: BillingSettingsPatch,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_superuser),
+):
+    row = _get_or_create_system_settings(db)
+    row.payments_enabled = body.payments_enabled
+    db.commit()
+    db.refresh(row)
+    configured = bool(app_settings.STRIPE_SECRET_KEY and app_settings.STRIPE_PRICE_ID)
+    return BillingSettingsOut(
+        payments_enabled=bool(row.payments_enabled),
+        stripe_configured=configured,
+    )
+
+
+@router.put("/users/{user_id}/premium")
+async def admin_set_user_premium(
+    user_id: int,
+    body: AdminPremiumPatch,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_superuser),
+):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if user.is_superuser:
+        raise HTTPException(status_code=400, detail="No aplica a superadmin")
+    if user.is_anonymous:
+        raise HTTPException(status_code=400, detail="Los anónimos no tienen premium persistente")
+
+    if body.enabled:
+        apply_premium_active(user, source="admin", until=None)
+    else:
+        clear_premium(user)
+
+    db.commit()
+    db.refresh(user)
+    payload = {"user_id": user.id, **premium_status_dict(user)}
+    for sid, info in list(online_users.items()):
+        if _ws_user_id_matches_db(info.get("user_id"), user.id):
+            await sio.emit("premium_updated", payload, to=str(sid))
+    return payload

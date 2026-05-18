@@ -32,3 +32,10 @@ class User(Base):
     nsfw_strike_count = Column(Integer, default=0, nullable=False)
     nsfw_ban_until = Column(DateTime(timezone=True), nullable=True)
     nsfw_permanent_ban = Column(Boolean, default=False, nullable=False)
+
+    # Premium (Stripe suscripción o regalo admin)
+    is_premium = Column(Boolean, default=False, nullable=False)
+    premium_source = Column(String(16), nullable=True)  # stripe | admin
+    premium_until = Column(DateTime(timezone=True), nullable=True)
+    stripe_customer_id = Column(String(255), unique=True, nullable=True, index=True)
+    stripe_subscription_id = Column(String(255), unique=True, nullable=True, index=True)

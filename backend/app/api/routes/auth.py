@@ -22,6 +22,7 @@ from app.core.config import settings
 from app.core.security import verify_password, get_password_hash, create_access_token
 from app.core.age import is_at_least_age, MIN_REGISTER_AGE
 from app.api.deps import get_current_user
+from app.services.premium import premium_status_dict
 from jose import jwt, JWTError
 from fastapi import Header
 import uuid
@@ -41,6 +42,7 @@ def _token_payload(user: User) -> dict:
         "nsfw_strike_count": int(getattr(user, "nsfw_strike_count", 0) or 0),
         "nsfw_ban_until": user.nsfw_ban_until,
         "nsfw_permanent_ban": bool(getattr(user, "nsfw_permanent_ban", False)),
+        **premium_status_dict(user),
     }
 
 
