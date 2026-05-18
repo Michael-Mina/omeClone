@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* md = escritorio real (ratón); en móvil rotado no aplica aunque el ancho supere 768px */
+@custom-variant md (@media (min-width: 768px) and (hover: hover) and (pointer: fine));
+
 @layer base {
   html {
     font-family: 'Inter', system-ui, sans-serif;

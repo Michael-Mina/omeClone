@@ -178,9 +178,6 @@ export const useWebRTC = () => {
   /** Micrófono silenciado por el usuario (`track.enabled=false`; deja de enviar audio por WebRTC). */
   const micMutedRef = useRef(false);
   const [micMuted, setMicMuted] = useState(false);
-  /** Vídeo remoto en mute por política de autoplay: hace falta un gesto del usuario para escuchar al otro. */
-  const [remoteAudioBlocked, setRemoteAudioBlocked] = useState(false);
-
   const syncLocalMicToMutePref = useCallback(() => {
     const stream = localStreamRef.current;
     if (!stream) return;
@@ -402,28 +399,35 @@ export const useWebRTC = () => {
     }
   }, []);
 
+  const attemptRemoteAudioPlayback = useCallback(async (): Promise<boolean> => {
+    const el = remoteVideoRef.current;
+    if (!el?.srcObject) return false;
+
+    el.controls = false;
+    el.muted = false;
+    try {
+      await el.play();
+      return true;
+    } catch {
+      el.muted = true;
+      try {
+        await el.play();
+      } catch {
+        /* noop */
+      }
+      return false;
+    }
+  }, []);
+
   const bindRemoteStreamToVideo = useCallback(() => {
     const el = remoteVideoRef.current;
     const stream = remoteStreamRef.current;
     if (el && stream) {
       el.srcObject = stream;
-      setRemoteAudioBlocked(false);
-      /* Autoplay con sonido primero; si el navegador bloquea, muted + play muestra vídeo sin negro por política */
-      el.muted = false;
-      void el.play().catch(() => {
-        el.muted = true;
-        setRemoteAudioBlocked(true);
-        void el.play().catch(() => {});
-      });
+      el.controls = false;
+      void attemptRemoteAudioPlayback();
     }
-  }, []);
-
-  const tryUnmuteRemotePlayback = useCallback(() => {
-    const el = remoteVideoRef.current;
-    if (!el?.srcObject) return;
-    el.muted = false;
-    void el.play().then(() => setRemoteAudioBlocked(false)).catch(() => setRemoteAudioBlocked(true));
-  }, []);
+  }, [attemptRemoteAudioPlayback]);
 
   const attachRemoteStream = useCallback(
     (event: RTCTrackEvent) => {
@@ -809,6 +813,37 @@ export const useWebRTC = () => {
     return () => window.clearInterval(id);
   }, [matchStatus, roomId, attemptReconnection]);
 
+  /** Reintentos al conectar y en el siguiente gesto del usuario (política autoplay). */
+  useEffect(() => {
+    if (matchStatus !== 'matched') return;
+
+    void attemptRemoteAudioPlayback();
+    const t1 = window.setTimeout(() => void attemptRemoteAudioPlayback(), 400);
+    const t2 = window.setTimeout(() => void attemptRemoteAudioPlayback(), 1500);
+
+    const onGesture = () => {
+      void attemptRemoteAudioPlayback().then((ok) => {
+        if (ok) {
+          window.removeEventListener('pointerdown', onGesture);
+          window.removeEventListener('touchstart', onGesture);
+          window.removeEventListener('keydown', onGesture);
+        }
+      });
+    };
+
+    window.addEventListener('pointerdown', onGesture, { passive: true });
+    window.addEventListener('touchstart', onGesture, { passive: true });
+    window.addEventListener('keydown', onGesture);
+
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.removeEventListener('pointerdown', onGesture);
+      window.removeEventListener('touchstart', onGesture);
+      window.removeEventListener('keydown', onGesture);
+    };
+  }, [matchStatus, attemptRemoteAudioPlayback]);
+
   // Final cleanup
   useEffect(() => {
     return () => {
@@ -830,7 +865,5 @@ export const useWebRTC = () => {
     toggleTorch,
     micMuted,
     toggleMicMuted,
-    remoteAudioBlocked,
-    tryUnmuteRemotePlayback,
   };
 };

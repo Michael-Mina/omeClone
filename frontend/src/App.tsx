@@ -34,7 +34,6 @@ import {
   Flashlight,
   Mic,
   MicOff,
-  Volume2,
   PictureInPicture2,
   Maximize2,
 } from 'lucide-react';
@@ -83,8 +82,6 @@ function App() {
     toggleTorch,
     micMuted,
     toggleMicMuted,
-    remoteAudioBlocked,
-    tryUnmuteRemotePlayback,
   } = useWebRTC();
 
   const [nsfwPublic, setNsfwPublic] = useState<PublicNsfwDetectionSettings | null>(null);
@@ -748,25 +745,16 @@ function App() {
             ref={remoteVideoRef}
             autoPlay
             playsInline
+            controls={false}
+            controlsList="nodownload nofullscreen noremoteplayback noplaybackrate"
             disablePictureInPicture={false}
+            disableRemotePlayback
             className="absolute inset-0 w-full h-full object-cover"
             style={{
               transform: `translateX(${clampedDelta * 0.3}px)`,
               transition: swipeDelta === 0 ? 'transform 0.3s ease-out' : 'none',
             }}
           />
-
-          {matchStatus === 'matched' && remoteAudioBlocked && (
-            <button
-              type="button"
-              onClick={() => tryUnmuteRemotePlayback()}
-              className="absolute top-14 right-3 md:top-16 md:right-4 z-30 flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/95 text-black text-xs font-bold shadow-lg border border-amber-400/80 hover:bg-amber-400 active:scale-95 transition-transform"
-              title="El navegador silenció el audio hasta que interactúes"
-            >
-              <Volume2 size={16} strokeWidth={2.5} />
-              Activar sonido
-            </button>
-          )}
 
           {/* Swipe visual feedback overlays (mobile only): izquierda = siguiente, derecha = detener */}
           {swipeDirection === 'left' && swipeOpacity > 0.1 && (

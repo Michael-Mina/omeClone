@@ -15,9 +15,16 @@ function getDocPiP(): DocPiPApi | undefined {
   return (window as Window & { documentPictureInPicture?: DocPiPApi }).documentPictureInPicture;
 }
 
+export function isMobileDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+}
+
 export function getPipCapability(): PipCapability {
   if (typeof getDocPiP()?.requestWindow === 'function') return 'document';
-  if (typeof document !== 'undefined' && document.pictureInPictureEnabled) return 'video';
+  if (!isMobileDevice() && typeof document !== 'undefined' && document.pictureInPictureEnabled) {
+    return 'video';
+  }
   return 'none';
 }
 
@@ -283,8 +290,11 @@ export function useMatchFloatingWindow({
       const video = doc.createElement('video');
       video.setAttribute('playsinline', '');
       video.setAttribute('autoplay', '');
+      video.setAttribute('disablepictureinpicture', '');
       video.playsInline = true;
       video.autoplay = true;
+      video.controls = false;
+      video.disablePictureInPicture = true;
       pipVideoRef.current = video;
 
       videoWrap.append(badge, waiting, video);
@@ -375,7 +385,7 @@ export function useMatchFloatingWindow({
           ? Math.min(360, window.screen.width - 16)
           : Math.min(440, Math.max(320, Math.round(window.screen.width * 0.34))),
         height: mobile
-          ? Math.min(300, Math.max(240, Math.round(window.screen.height * 0.32)))
+          ? Math.min(340, Math.max(280, Math.round(window.screen.height * 0.38)))
           : Math.min(380, Math.max(260, Math.round(window.screen.height * 0.36))),
       });
 
@@ -433,10 +443,23 @@ export function useMatchFloatingWindow({
       return false;
     }
 
+    const mobile = isMobileDevice();
+
     if (pipCapability === 'document') {
       const ok = await openDocumentPiP();
       if (ok) return true;
+      if (mobile) {
+        setFloatingError('Usa Chrome en Android para ventana flotante con controles propios.');
+        return false;
+      }
       return openVideoPiP(true);
+    }
+
+    if (mobile) {
+      setFloatingError(
+        'En móvil el PiP del sistema no permite controles personalizados. Usa Chrome en Android.'
+      );
+      return false;
     }
 
     if (pipCapability === 'video') {

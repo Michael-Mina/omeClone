@@ -38,7 +38,7 @@ import { startMonitorRecording } from '../utils/adminMonitorRecorder';
 import { MatchChatPanel, type ChatLine } from '../components/MatchChatPanel';
 import { translateForChatDisplay, resolveTranslateTargetLang } from '../utils/chatTranslate';
 import { useChatTranslateMode } from '../hooks/useChatTranslateMode';
-import { useMdUp } from '../hooks/useMdUp';
+import { MD_UP_MQ, useMdUp } from '../hooks/useMdUp';
 import { getAdultZoneDisplay } from '../types/matchZone';
 
 interface ConnectedPeer {
@@ -758,7 +758,7 @@ const AdminDashboard: React.FC = () => {
       if (!document.fullscreenElement) {
         await el.requestFullscreen();
         const mobileForFs =
-          typeof window !== 'undefined' && !window.matchMedia('(min-width: 768px)').matches;
+          typeof window !== 'undefined' && !window.matchMedia(MD_UP_MQ).matches;
         if (mobileForFs) {
           const o = screen.orientation;
           if (o && typeof o.lock === 'function') {

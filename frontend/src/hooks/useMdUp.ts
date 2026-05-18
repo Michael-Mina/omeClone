@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 
-const MD_UP_MQ = '(min-width: 768px)';
+/** Misma condición que el variant `md` de Tailwind (ver index.css). */
+export const MD_UP_MQ = '(min-width: 768px) and (hover: hover) and (pointer: fine)';
 
-/** `true` cuando el viewport es ≥768px (breakpoint `md` de Tailwind). */
+/** `true` solo en viewport ancho con puntero fino (PC), no en móvil en horizontal. */
 export function useMdUp() {
   const [mdUp, setMdUp] = useState(() =>
     typeof window !== 'undefined' ? window.matchMedia(MD_UP_MQ).matches : false
