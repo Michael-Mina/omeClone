@@ -1,96 +1,103 @@
 import { apiUrl } from '../config/apiBase';
 import { useAppStore } from '../store/useAppStore';
 
-let refreshInFlight: Promise<string | null> | null = null;
+let refreshPromise: Promise<string | null> | null = null;
 
-async function tryRefreshToken(expiredToken: string): Promise<string | null> {
+async function probeToken(token: string): Promise<boolean> {
   try {
-    const r = await fetch(apiUrl('/api/auth/refresh'), {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${expiredToken}` },
+    const res = await fetch(apiUrl('/api/auth/me'), {
+      headers: { Authorization: `Bearer ${token}` },
     });
-    if (!r.ok) return null;
-    const data = (await r.json()) as { access_token?: string };
-    const next = typeof data.access_token === 'string' ? data.access_token.trim() : '';
-    return next || null;
+    return res.ok;
   } catch {
-    return null;
+    return false;
   }
 }
 
-async function tryAnonymousReLogin(): Promise<string | null> {
-  const s = useAppStore.getState();
-  if (!s.isAnonymous || !s.gender || !s.country || !s.language || !s.birthYear) {
+async function refreshAnonymousSession(): Promise<string | null> {
+  const st = useAppStore.getState();
+  if (
+    !st.isAnonymous ||
+    !st.birthYear ||
+    !st.gender ||
+    !st.country ||
+    !st.language
+  ) {
     return null;
   }
+
   try {
-    const r = await fetch(apiUrl('/api/auth/anonymous-login'), {
+    const res = await fetch(apiUrl('/api/auth/anonymous-login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        birth_year: s.birthYear,
-        gender: s.gender,
-        country: s.country,
-        language: s.language,
+        birth_year: st.birthYear,
+        gender: st.gender,
+        country: st.country,
+        language: st.language,
         adult_declaration: true,
       }),
     });
-    if (!r.ok) return null;
-    const data = (await r.json()) as {
+    const data = (await res.json()) as {
       access_token?: string;
       user_id?: number;
       display_name?: string | null;
       exempt_from_ai_censorship?: boolean;
     };
-    const next = typeof data.access_token === 'string' ? data.access_token.trim() : '';
-    if (!next) return null;
-    s.setAuth(
-      String(data.user_id ?? s.userId ?? 'anon'),
-      next,
+    if (!res.ok || !data.access_token) {
+      console.warn('[auth] No se pudo renovar sesión anónima', res.status);
+      return null;
+    }
+
+    useAppStore.getState().setAuth(
+      String(data.user_id ?? ''),
+      data.access_token,
       'user',
-      data.display_name ?? s.displayName,
+      data.display_name ?? st.displayName,
       true,
       {
-        gender: s.gender,
-        country: s.country,
-        language: s.language,
-        birthYear: s.birthYear,
+        gender: st.gender,
+        country: st.country,
+        language: st.language,
+        birthYear: st.birthYear,
         exemptFromAiCensorship: Boolean(data.exempt_from_ai_censorship),
       }
     );
-    return next;
-  } catch {
+    return data.access_token;
+  } catch (err) {
+    console.warn('[auth] Error renovando sesión anónima', err);
     return null;
   }
 }
 
 /**
- * Devuelve un Bearer válido para REST: reutiliza el actual, renueva con /refresh
- * o vuelve a crear sesión anónima si el usuario ya no existe en el servidor.
+ * Devuelve un JWT válido para llamadas REST.
+ * Si el anónimo fue borrado en el servidor (p. ej. tras cerrar pestaña), crea uno nuevo con el perfil guardado.
  */
-export async function ensureFreshToken(): Promise<string | null> {
-  const tok = useAppStore.getState().token?.trim();
-  if (!tok) return null;
+export async function ensureValidAccessToken(options?: {
+  forceRefresh?: boolean;
+}): Promise<string | null> {
+  const st = useAppStore.getState();
+  const current = st.token?.trim();
+  if (!current) return null;
 
-  try {
-    const r = await fetch(apiUrl('/api/auth/me'), { headers: { Authorization: `Bearer ${tok}` } });
-    if (r.ok) return tok;
-  } catch {
-    /* red caída: intentar refresh igual */
+  if (!options?.forceRefresh && (await probeToken(current))) {
+    return current;
   }
 
-  if (!refreshInFlight) {
-    refreshInFlight = (async () => {
-      try {
-        let next = await tryRefreshToken(tok);
-        if (!next) next = await tryAnonymousReLogin();
-        if (next) useAppStore.getState().updateAccessToken(next);
-        return next;
-      } finally {
-        refreshInFlight = null;
-      }
-    })();
+  if (!st.isAnonymous) {
+    useAppStore.getState().setAuth('', '', 'user', null, false);
+    return null;
   }
 
-  return refreshInFlight;
+  if (!refreshPromise) {
+    refreshPromise = refreshAnonymousSession().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  const fresh = await refreshPromise;
+  if (fresh) return fresh;
+
+  useAppStore.getState().setAuth('', '', 'user', null, false);
+  return null;
 }

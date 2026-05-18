@@ -1,5 +1,5 @@
 import { apiUrl } from '../config/apiBase';
-import { ensureFreshToken } from './authSession';
+import { ensureValidAccessToken } from './authSession';
 
 /** Entradas máximas en caché (FIFO simple al superar el límite). */
 const MAX_CACHE_ENTRIES = 400;
@@ -46,13 +46,32 @@ function normalizeTargetLang(targetLang: string | null | undefined): string {
   return targetLang && targetLang !== '' ? targetLang : 'en';
 }
 
+async function postTranslate(
+  raw: string,
+  tgt: string,
+  token: string
+): Promise<Response> {
+  return fetch(apiUrl('/api/translate'), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      text: raw,
+      target_lang: tgt,
+    }),
+  });
+}
+
 export async function translateChatText(
   text: string,
   targetLang: string | null | undefined,
   _token?: string | null
 ): Promise<string> {
-  const token = await ensureFreshToken();
-  if (!token) return text;
+  let authToken = (await ensureValidAccessToken()) ?? _token?.trim() ?? null;
+  if (!authToken) return text;
+
   const raw = text.trim();
   if (!raw) return text;
 
@@ -61,17 +80,12 @@ export async function translateChatText(
   if (cached !== undefined) return cached;
 
   try {
-    const res = await fetch(apiUrl('/api/translate'), {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        text: raw,
-        target_lang: tgt,
-      }),
-    });
+    let res = await postTranslate(raw, tgt, authToken);
+
+    if (res.status === 401) {
+      authToken = await ensureValidAccessToken({ forceRefresh: true });
+      if (authToken) res = await postTranslate(raw, tgt, authToken);
+    }
 
     if (!res.ok) {
       console.warn('[translate] API', res.status, await res.text().catch(() => ''));
@@ -96,12 +110,12 @@ export async function translateForChatDisplay(
   targetLang: string | null | undefined,
   _token?: string | null
 ): Promise<{ text: string; originalText?: string }> {
-  const token = await ensureFreshToken();
-  if (!token) return { text: raw };
+  const authToken = (await ensureValidAccessToken()) ?? _token?.trim() ?? null;
+  if (!authToken) return { text: raw };
   const trimmed = raw.trim();
   if (!trimmed || !chatLineLikelyNeedsTranslation(trimmed)) return { text: raw };
   try {
-    const translated = await translateChatText(trimmed, targetLang, token);
+    const translated = await translateChatText(trimmed, targetLang, authToken);
     if (translated !== trimmed) return { text: translated, originalText: raw };
     return { text: raw };
   } catch {
