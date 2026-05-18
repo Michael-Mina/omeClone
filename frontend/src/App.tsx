@@ -484,7 +484,13 @@ function App() {
     requestNewMatch();
   }, [requestNewMatch]);
 
-  const { tryOpenFloating, supportsDocumentPiP } = useMatchFloatingWindow({
+  const {
+    pipCapability,
+    isFloatingOpen,
+    floatingError,
+    toggleFloating,
+    enableFloating,
+  } = useMatchFloatingWindow({
     active: matchStatus === 'matched',
     remoteVideoRef,
     micMuted,
@@ -739,6 +745,7 @@ function App() {
             ref={remoteVideoRef}
             autoPlay
             playsInline
+            disablePictureInPicture={false}
             className="absolute inset-0 w-full h-full object-cover"
             style={{
               transform: `translateX(${clampedDelta * 0.3}px)`,
@@ -824,6 +831,28 @@ function App() {
             </div>
           )}
           
+          {matchStatus === 'matched' && pipCapability !== 'none' && !isFloatingOpen && (
+            <button
+              type="button"
+              onClick={() => void enableFloating()}
+              className="absolute top-12 left-3 right-3 md:top-14 md:left-4 md:right-auto md:max-w-sm z-25 px-3 py-2 rounded-xl bg-violet-950/90 border border-violet-500/50 text-violet-100 text-xs font-semibold text-left shadow-lg hover:bg-violet-900/90 active:scale-[0.99] transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <PictureInPicture2 size={16} className="shrink-0" />
+                Pulsa aquí para activar el modo flotante antes de minimizar o cambiar de pestaña.
+              </span>
+            </button>
+          )}
+
+          {floatingError && (
+            <p
+              role="alert"
+              className="absolute top-12 left-3 right-3 md:top-14 md:left-4 md:right-auto md:max-w-md z-25 px-3 py-2 rounded-xl bg-amber-950/95 border border-amber-600/60 text-amber-100 text-xs"
+            >
+              {floatingError}
+            </p>
+          )}
+
           {/* Status badge */}
           <div className="absolute top-3 left-3 md:top-4 md:left-4 px-3 py-1.5 bg-black/60 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-2 z-20">
             <span className={`w-2.5 h-2.5 rounded-full ${
@@ -894,13 +923,22 @@ function App() {
                   <span className="text-gray-500">24/7</span>
                 </div>
 
-                {matchStatus === 'matched' && supportsDocumentPiP && (
+                {matchStatus === 'matched' && pipCapability !== 'none' && (
                   <button
                     type="button"
-                    onClick={() => tryOpenFloating()}
-                    className="h-11 w-11 md:h-10 md:w-10 shrink-0 rounded-full flex items-center justify-center text-white shadow-md bg-gray-800 ring-1 ring-white/10 hover:bg-gray-700 hover:scale-105 active:scale-95 transition-all"
-                    title="Ventana flotante (al cambiar de app)"
-                    aria-label="Abrir ventana flotante"
+                    onClick={() => void toggleFloating()}
+                    className={`h-11 w-11 md:h-10 md:w-10 shrink-0 rounded-full flex items-center justify-center text-white shadow-md ring-1 ring-white/10 hover:scale-105 active:scale-95 transition-all ${
+                      isFloatingOpen
+                        ? 'bg-violet-600 ring-violet-400/40'
+                        : 'bg-gray-800 hover:bg-gray-700'
+                    }`}
+                    title={
+                      isFloatingOpen
+                        ? 'Cerrar ventana flotante'
+                        : 'Activar ventana flotante (pulsa antes de minimizar)'
+                    }
+                    aria-label={isFloatingOpen ? 'Cerrar ventana flotante' : 'Activar ventana flotante'}
+                    aria-pressed={isFloatingOpen}
                   >
                     <PictureInPicture2 size={20} strokeWidth={2} />
                   </button>
@@ -1037,6 +1075,22 @@ function App() {
                 aria-pressed={micMuted}
               >
                 {micMuted ? <MicOff size={20} strokeWidth={2} /> : <Mic size={20} strokeWidth={2} />}
+              </button>
+            )}
+            {matchStatus === 'matched' && pipCapability !== 'none' && (
+              <button
+                type="button"
+                onClick={() => void toggleFloating()}
+                className={`h-11 w-11 shrink-0 rounded-full flex items-center justify-center shadow-xl border transition-all active:scale-95 hover:shadow-lg hover:scale-105 ${
+                  isFloatingOpen
+                    ? 'bg-violet-700/95 border-violet-500 text-white'
+                    : 'bg-gray-900/95 border-gray-700 text-gray-100 hover:border-violet-500/50 hover:bg-gray-800'
+                }`}
+                title={isFloatingOpen ? 'Cerrar flotante' : 'Modo flotante'}
+                aria-label={isFloatingOpen ? 'Cerrar ventana flotante' : 'Activar ventana flotante'}
+                aria-pressed={isFloatingOpen}
+              >
+                <PictureInPicture2 size={20} strokeWidth={2} />
               </button>
             )}
             <button
