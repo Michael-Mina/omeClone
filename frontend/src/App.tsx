@@ -11,6 +11,7 @@ import { useNsfwEnforcement, NSFW_STRIKES_FOR_PERMANENT } from './hooks/useNsfwE
 import type { NsfwDetectionRuntimeConfig } from './hooks/useNSFWDetection';
 import type { NsfwEnforcementRuntime } from './hooks/useNsfwEnforcement';
 import { MatchChatPanel, type ChatLine } from './components/MatchChatPanel';
+import { MatchSpeedDial, type SpeedDialAction } from './components/MatchSpeedDial';
 import { MATCH_ZONE_META, getAdultZoneDisplay, userMeetsAdultZone } from './types/matchZone';
 import { translateForChatDisplay, resolveTranslateTargetLang } from './utils/chatTranslate';
 import { languageLabel } from './data/profileOptions';
@@ -18,6 +19,7 @@ import { apiUrl } from './config/apiBase';
 import { useChatTranslateMode } from './hooks/useChatTranslateMode';
 import { useMdUp } from './hooks/useMdUp';
 import { useMatchFloatingWindow } from './hooks/useMatchFloatingWindow';
+import { useAppFullscreen } from './hooks/useAppFullscreen';
 import {
   Video,
   SkipForward,
@@ -36,6 +38,7 @@ import {
   MicOff,
   PictureInPicture2,
   Maximize2,
+  Minimize2,
 } from 'lucide-react';
 
 const MOBILE_PIP_W = 128;
@@ -142,12 +145,6 @@ function App() {
     [translateMode, language]
   );
 
-  /** Posición vertical común para FAB móvil (mic / mostrar cámara) según si el chat está visible. */
-  const mobileAccessoryBottomClass =
-    matchStatus === 'matched' && !mobileChatHidden
-      ? 'bottom-[calc(max(min(30vh,240px),128px)+12px+env(safe-area-inset-bottom,0px))]'
-      : 'bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))]';
-
   /** Al cambiar idioma destino, re-traducir mensajes visibles (usa texto original guardado). */
   useEffect(() => {
     if (matchStatus !== 'matched') return;
@@ -214,7 +211,10 @@ function App() {
   const [swipeDelta, setSwipeDelta] = useState(0);
   const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
   const remoteContainerRef = useRef<HTMLDivElement>(null);
+  const appShellRef = useRef<HTMLDivElement>(null);
   const SWIPE_THRESHOLD = 100;
+
+  const { isFullscreen, toggleFullscreen } = useAppFullscreen(appShellRef, remoteVideoRef);
 
   /** Nueva búsqueda / pasar siguiente: permite idle→cola automática o matched→pasar persona. */
   const requestNewMatch = useCallback(() => {
@@ -483,11 +483,10 @@ function App() {
   }, [requestNewMatch]);
 
   const {
-    pipCapability,
+    showPipButton,
     isFloatingOpen,
     floatingError,
     toggleFloating,
-    enableFloating,
     focusMainAndClosePip,
     showInAppPipControls,
   } = useMatchFloatingWindow({
@@ -503,6 +502,99 @@ function App() {
     socket.emit('cancel_matchmaking', {});
     stopMatch();
   }, [stopMatch]);
+
+  const speedDialActions = useMemo((): SpeedDialAction[] => {
+    const actions: SpeedDialAction[] = [
+      {
+        id: 'next',
+        label: matchStatus === 'idle' ? 'Iniciar búsqueda' : 'Siguiente persona',
+        icon:
+          matchStatus === 'idle' ? (
+            <Play size={20} fill="currentColor" className="ml-0.5" />
+          ) : (
+            <SkipForward size={20} fill="currentColor" />
+          ),
+        onClick: handleStartNext,
+        disabled: matchStatus === 'waiting' || matchStatus === 'stopped',
+        hidden: matchStatus === 'stopped',
+        tone: 'blue',
+      },
+      {
+        id: 'mic',
+        label: micMuted ? 'Activar micrófono' : 'Silenciar micrófono',
+        icon: micMuted ? <MicOff size={20} strokeWidth={2} /> : <Mic size={20} strokeWidth={2} />,
+        onClick: toggleMicMuted,
+        hidden: matchStatus !== 'matched',
+        active: micMuted,
+        tone: 'danger',
+      },
+      {
+        id: 'pip',
+        label: isFloatingOpen ? 'Cerrar flotante' : 'Ventana flotante',
+        icon: <PictureInPicture2 size={20} strokeWidth={2} />,
+        onClick: () => void toggleFloating(),
+        hidden: matchStatus !== 'matched' || !showPipButton,
+        active: isFloatingOpen,
+        tone: 'violet',
+      },
+      {
+        id: 'fullscreen',
+        label: isFullscreen ? 'Salir pantalla completa' : 'Pantalla completa',
+        icon: isFullscreen ? (
+          <Minimize2 size={20} strokeWidth={2} />
+        ) : (
+          <Maximize2 size={20} strokeWidth={2} />
+        ),
+        onClick: () => void toggleFullscreen(),
+        hidden: matchStatus !== 'matched',
+        active: isFullscreen,
+        tone: 'emerald',
+      },
+      {
+        id: 'stop',
+        label: 'Detener',
+        icon: <XCircle size={20} strokeWidth={2} />,
+        onClick: handleStop,
+        disabled: matchStatus === 'idle' || matchStatus === 'stopped',
+        hidden: matchStatus === 'idle',
+        tone: 'danger',
+      },
+    ];
+
+    if (!mdUp && mobilePipHidden) {
+      actions.push({
+        id: 'camera',
+        label: 'Mostrar mi cámara',
+        icon: <Video size={20} strokeWidth={2} />,
+        onClick: () => setMobilePipHidden(false),
+      });
+    }
+
+    if (!mdUp && matchStatus === 'matched' && mobileChatHidden) {
+      actions.push({
+        id: 'chat',
+        label: 'Mostrar chat',
+        icon: <MessageSquare size={20} strokeWidth={2} />,
+        onClick: () => setMobileChatHidden(false),
+      });
+    }
+
+    return actions;
+  }, [
+    matchStatus,
+    micMuted,
+    isFloatingOpen,
+    showPipButton,
+    isFullscreen,
+    mdUp,
+    mobilePipHidden,
+    mobileChatHidden,
+    handleStartNext,
+    toggleMicMuted,
+    toggleFloating,
+    toggleFullscreen,
+    handleStop,
+  ]);
 
   const handleResume = useCallback(() => {
     resetMatch();
@@ -695,9 +787,12 @@ function App() {
   );
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-gray-950 text-white overflow-hidden font-sans">
+    <div
+      ref={appShellRef}
+      className="app-call-shell flex flex-col h-[100dvh] bg-gray-950 text-white overflow-hidden font-sans fullscreen:h-[100dvh] fullscreen:w-screen fullscreen:max-h-none fullscreen:bg-black"
+    >
       {/* Header */}
-      <header className="p-3 md:p-4 bg-gray-900/90 backdrop-blur-lg border-b border-gray-800/50 flex justify-between items-center shadow-lg z-30">
+      <header className="p-3 md:p-4 bg-gray-900/90 backdrop-blur-lg border-b border-gray-800/50 flex justify-between items-center shadow-lg z-30 shrink-0 fullscreen:hidden">
         <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Albedrío</h1>
         <div className="flex items-center gap-2 md:gap-3">
           <button
@@ -732,11 +827,11 @@ function App() {
       </header>
 
       {/* Main: 70% remoto + 30% panel (cámara / chat reservado) en desktop; móvil solo remoto */}
-      <main className="flex flex-1 flex-col md:flex-row overflow-hidden bg-black min-h-0 relative">
+      <main className="flex flex-1 flex-col md:flex-row overflow-hidden bg-black min-h-0 relative fullscreen:flex-1 fullscreen:min-h-0">
         {/* Remoto: pantalla completa en móvil, 70% en desktop */}
         <div
           ref={remoteContainerRef}
-          className="group flex-1 md:flex-none md:w-[70%] md:min-w-0 relative flex items-center justify-center overflow-hidden min-h-0"
+          className="group flex-1 md:flex-none md:w-[70%] md:min-w-0 relative flex items-center justify-center overflow-hidden min-h-0 fullscreen:flex-1 fullscreen:w-full fullscreen:max-w-none"
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
@@ -822,22 +917,16 @@ function App() {
             </div>
           )}
           
-          {matchStatus === 'matched' && pipCapability !== 'none' && !isFloatingOpen && (
-            <button
-              type="button"
-              onClick={() => void enableFloating()}
-              className="absolute top-3 right-3 md:top-4 md:right-4 z-[25] h-10 w-10 rounded-full flex items-center justify-center bg-violet-950/90 border border-violet-500/50 text-violet-200 shadow-lg hover:bg-violet-800/90 active:scale-95 transition-transform"
-              title="Activar modo flotante"
-              aria-label="Activar modo flotante"
-            >
-              <PictureInPicture2 size={20} strokeWidth={2} />
-            </button>
-          )}
+          <MatchSpeedDial
+            actions={speedDialActions}
+            forceOpen={isFullscreen}
+            className="absolute top-3 right-3 md:top-4 md:right-4"
+          />
 
           {floatingError && (
             <p
               role="alert"
-              className="absolute top-14 right-3 md:top-16 md:right-4 z-[25] max-w-[220px] px-2.5 py-1.5 rounded-lg bg-amber-950/95 border border-amber-600/60 text-amber-100 text-[10px] leading-snug"
+              className="absolute top-[4.5rem] right-3 md:top-20 md:right-4 z-[24] max-w-[220px] px-2.5 py-1.5 rounded-lg bg-amber-950/95 border border-amber-600/60 text-amber-100 text-[10px] leading-snug pointer-events-none"
             >
               {floatingError}
             </p>
@@ -892,20 +981,7 @@ function App() {
                 <span>Det. →</span>
               </p>
               
-              <div className="hidden md:flex items-center justify-center gap-4 md:gap-6">
-                {/* Stop — solo icono */}
-                <button
-                  type="button"
-                  onClick={handleStop}
-                  disabled={matchStatus === 'idle' || matchStatus === 'stopped'}
-                  className="h-11 w-11 md:h-10 md:w-10 shrink-0 rounded-full flex items-center justify-center text-white shadow-md bg-gradient-to-br from-red-600 to-rose-700 ring-1 ring-white/10 transition-all duration-200 hover:shadow-lg hover:shadow-red-900/40 hover:scale-110 hover:ring-2 hover:ring-white/30 hover:brightness-110 active:scale-95 disabled:opacity-30 disabled:hover:scale-100 disabled:hover:shadow-md disabled:pointer-events-none"
-                  id="btn-stop"
-                  title="Detener"
-                  aria-label="Detener conexión"
-                >
-                  <XCircle size={22} strokeWidth={2} />
-                </button>
-
+              <div className="hidden md:flex items-center justify-center">
                 {/* IA — compacto */}
                 <div className="flex items-center gap-1 px-2 py-1 md:px-2.5 md:py-1 rounded-full bg-white/5 border border-white/10 text-[9px] text-gray-400 uppercase tracking-wide font-semibold shrink-0">
                   <ShieldCheck size={11} className="text-green-400 shrink-0" />
@@ -913,43 +989,6 @@ function App() {
                   <span className="text-gray-500">24/7</span>
                 </div>
 
-                {matchStatus === 'matched' && pipCapability !== 'none' && (
-                  <button
-                    type="button"
-                    onClick={() => void toggleFloating()}
-                    className={`h-11 w-11 md:h-10 md:w-10 shrink-0 rounded-full flex items-center justify-center text-white shadow-md ring-1 ring-white/10 hover:scale-105 active:scale-95 transition-all ${
-                      isFloatingOpen
-                        ? 'bg-violet-600 ring-violet-400/40'
-                        : 'bg-gray-800 hover:bg-gray-700'
-                    }`}
-                    title={
-                      isFloatingOpen
-                        ? 'Cerrar ventana flotante'
-                        : 'Activar ventana flotante (pulsa antes de minimizar)'
-                    }
-                    aria-label={isFloatingOpen ? 'Cerrar ventana flotante' : 'Activar ventana flotante'}
-                    aria-pressed={isFloatingOpen}
-                  >
-                    <PictureInPicture2 size={20} strokeWidth={2} />
-                  </button>
-                )}
-
-                {/* Next / Start — solo icono */}
-                <button
-                  type="button"
-                  onClick={handleStartNext}
-                  disabled={matchStatus === 'waiting' || matchStatus === 'stopped'}
-                  className="h-11 w-11 md:h-10 md:w-10 shrink-0 rounded-full flex items-center justify-center text-white shadow-md bg-gradient-to-br from-blue-600 to-indigo-700 ring-1 ring-white/10 transition-all duration-200 hover:shadow-lg hover:shadow-blue-900/40 hover:scale-110 hover:ring-2 hover:ring-white/30 hover:brightness-110 active:scale-95 disabled:opacity-30 disabled:hover:scale-100 disabled:hover:shadow-md disabled:pointer-events-none"
-                  id="btn-next"
-                  title={matchStatus === 'idle' ? 'Iniciar' : 'Siguiente'}
-                  aria-label={matchStatus === 'idle' ? 'Iniciar búsqueda' : 'Siguiente persona'}
-                >
-                  {matchStatus === 'idle' ? (
-                    <Play size={22} fill="currentColor" className="ml-0.5" />
-                  ) : (
-                    <SkipForward size={22} fill="currentColor" />
-                  )}
-                </button>
               </div>
             </div>
           </div>
@@ -957,7 +996,7 @@ function App() {
 
         {/* Móvil: chat bajo el vídeo (se puede ocultar para ver más vídeo) */}
         {!mdUp && matchStatus === 'matched' && !mobileChatHidden && (
-          <div className="flex-none h-[min(30vh,240px)] min-h-[128px] border-t border-gray-800 bg-gray-950 flex flex-col overflow-hidden shrink-0">
+          <div className="flex-none h-[min(30vh,240px)] min-h-[128px] border-t border-gray-800 bg-gray-950 flex flex-col overflow-hidden shrink-0 fullscreen:hidden">
             <MatchChatPanel
               messages={chatMessages}
               onSend={handleChatSend}
@@ -972,21 +1011,9 @@ function App() {
           </div>
         )}
 
-        {!mdUp && matchStatus === 'matched' && mobileChatHidden && (
-          <button
-            type="button"
-            onClick={() => setMobileChatHidden(false)}
-            className="md:hidden fixed z-[44] left-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] h-11 w-11 rounded-full flex items-center justify-center bg-gray-900/95 border border-gray-700 text-gray-100 shadow-xl active:scale-95 hover:border-blue-500/50 hover:bg-gray-800 hover:shadow-lg transition-all duration-200"
-            title="Mostrar chat"
-            aria-label="Mostrar chat de texto"
-          >
-            <MessageSquare size={20} strokeWidth={2} />
-          </button>
-        )}
-
         {/* Desktop: 30% — mitad cámara local / mitad chat */}
         {mdUp && (
-          <aside className="flex flex-none w-[30%] min-w-0 flex-col bg-gray-950 border-l border-gray-800 z-10">
+          <aside className="flex flex-none w-[30%] min-w-0 flex-col bg-gray-950 border-l border-gray-800 z-10 fullscreen:hidden">
             <div className="h-1/2 min-h-0 flex flex-col bg-black shrink-0 border-b border-gray-800 relative overflow-hidden">
               <div className="absolute inset-0 bg-gray-900">{localCameraMarkup}</div>
             </div>
@@ -1008,7 +1035,7 @@ function App() {
         {/* Móvil: PIP arrastrable (solo cuando la cámara local no está en el panel desktop) */}
         {!mdUp && !mobilePipHidden && (
           <div
-            className="md:hidden fixed z-[45] flex flex-col rounded-xl overflow-hidden shadow-2xl border-2 border-gray-700/60 bg-gray-900 touch-none"
+            className="md:hidden fixed z-[45] flex flex-col rounded-xl overflow-hidden shadow-2xl border-2 border-gray-700/60 bg-gray-900 touch-none fullscreen:hidden"
             style={{
               width: MOBILE_PIP_W,
               height: MOBILE_PIP_H,
@@ -1049,7 +1076,7 @@ function App() {
 
         {showInAppPipControls && (
           <div
-            className="fixed z-[48] left-0 right-0 bottom-0 flex items-center justify-center gap-3 px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-gray-950/95 border-t border-white/10 backdrop-blur-md"
+            className="fixed z-[48] left-0 right-0 bottom-0 flex items-center justify-center gap-3 px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-gray-950/95 border-t border-white/10 backdrop-blur-md fullscreen:hidden"
             role="toolbar"
             aria-label="Controles videollamada flotante"
           >
@@ -1087,53 +1114,6 @@ function App() {
           </div>
         )}
 
-        {!mdUp && mobilePipHidden && (
-          <div
-            className={`md:hidden fixed z-[45] right-4 flex flex-col gap-2 items-end transition-[bottom] duration-300 ease-out ${mobileAccessoryBottomClass}`}
-          >
-            {matchStatus === 'matched' && (
-              <button
-                type="button"
-                onClick={() => toggleMicMuted()}
-                className={`h-11 w-11 shrink-0 rounded-full flex items-center justify-center shadow-xl border transition-all active:scale-95 hover:shadow-lg hover:scale-105 ${
-                  micMuted
-                    ? 'bg-red-900/95 border-red-600 text-red-200 hover:bg-red-800'
-                    : 'bg-gray-900/95 border-gray-700 text-gray-100 hover:border-gray-500 hover:bg-gray-800'
-                }`}
-                title={micMuted ? 'Activar micrófono' : 'Silenciar micrófono'}
-                aria-label={micMuted ? 'Activar micrófono' : 'Silenciar micrófono'}
-                aria-pressed={micMuted}
-              >
-                {micMuted ? <MicOff size={20} strokeWidth={2} /> : <Mic size={20} strokeWidth={2} />}
-              </button>
-            )}
-            {matchStatus === 'matched' && pipCapability !== 'none' && (
-              <button
-                type="button"
-                onClick={() => void toggleFloating()}
-                className={`h-11 w-11 shrink-0 rounded-full flex items-center justify-center shadow-xl border transition-all active:scale-95 hover:shadow-lg hover:scale-105 ${
-                  isFloatingOpen
-                    ? 'bg-violet-700/95 border-violet-500 text-white'
-                    : 'bg-gray-900/95 border-gray-700 text-gray-100 hover:border-violet-500/50 hover:bg-gray-800'
-                }`}
-                title={isFloatingOpen ? 'Cerrar flotante' : 'Modo flotante'}
-                aria-label={isFloatingOpen ? 'Cerrar ventana flotante' : 'Activar ventana flotante'}
-                aria-pressed={isFloatingOpen}
-              >
-                <PictureInPicture2 size={20} strokeWidth={2} />
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setMobilePipHidden(false)}
-              className="h-11 w-11 shrink-0 rounded-full flex items-center justify-center bg-gray-900/95 border border-gray-700 text-gray-100 shadow-xl active:scale-95 hover:border-gray-500 hover:bg-gray-800 hover:shadow-lg hover:scale-105 transition-all"
-              title="Mostrar mi cámara"
-              aria-label="Mostrar mi cámara"
-            >
-              <Video size={20} strokeWidth={2} />
-            </button>
-          </div>
-        )}
       </main>
     </div>
   );

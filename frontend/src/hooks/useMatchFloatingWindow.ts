@@ -22,10 +22,13 @@ export function isMobileDevice(): boolean {
 
 export function getPipCapability(): PipCapability {
   if (typeof getDocPiP()?.requestWindow === 'function') return 'document';
-  if (!isMobileDevice() && typeof document !== 'undefined' && document.pictureInPictureEnabled) {
-    return 'video';
-  }
+  if (typeof document !== 'undefined' && document.pictureInPictureEnabled) return 'video';
   return 'none';
+}
+
+/** Mostrar botón PiP: hay API o es móvil (Chrome Android puede exponer Document PiP tras cargar). */
+export function supportsPipButton(cap: PipCapability): boolean {
+  return cap !== 'none' || isMobileDevice();
 }
 
 function injectPiPStyles(doc: Document): void {
@@ -103,6 +106,9 @@ export function useMatchFloatingWindow({
   const [isFloatingOpen, setIsFloatingOpen] = useState(false);
   const [pipMode, setPipMode] = useState<PipMode>(null);
   const [floatingError, setFloatingError] = useState<string | null>(null);
+  const [pipCapability, setPipCapability] = useState<PipCapability>(() =>
+    typeof window !== 'undefined' ? getPipCapability() : 'none'
+  );
 
   const pipWindowRef = useRef<Window | null>(null);
   const pipVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -114,7 +120,19 @@ export function useMatchFloatingWindow({
   callbacksRef.current.onToggleMic = onToggleMic;
   callbacksRef.current.onNext = onNext;
 
-  const pipCapability = getPipCapability();
+  const showPipButton = supportsPipButton(pipCapability);
+
+  useEffect(() => {
+    const refresh = () => setPipCapability(getPipCapability());
+    refresh();
+    const t = window.setTimeout(refresh, 400);
+    window.addEventListener('focus', refresh);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener('focus', refresh);
+    };
+  }, []);
+
   const keepFloatingAlive = matchStatus === 'matched' || matchStatus === 'waiting';
   const canOpenFloating = matchStatus === 'matched';
 
@@ -443,32 +461,27 @@ export function useMatchFloatingWindow({
       return false;
     }
 
-    const mobile = isMobileDevice();
+    const cap = getPipCapability();
+    setPipCapability(cap);
 
-    if (pipCapability === 'document') {
+    if (cap === 'document') {
       const ok = await openDocumentPiP();
       if (ok) return true;
-      if (mobile) {
-        setFloatingError('Usa Chrome en Android para ventana flotante con controles propios.');
-        return false;
-      }
       return openVideoPiP(true);
     }
 
-    if (mobile) {
-      setFloatingError(
-        'En móvil el PiP del sistema no permite controles personalizados. Usa Chrome en Android.'
-      );
-      return false;
+    if (cap === 'video') {
+      return openVideoPiP(isMobileDevice());
     }
 
-    if (pipCapability === 'video') {
-      return openVideoPiP(false);
+    if (isMobileDevice()) {
+      setFloatingError('Usa Chrome en Android para ventana flotante con controles propios.');
+      return false;
     }
 
     setFloatingError('Tu navegador no admite ventana flotante.');
     return false;
-  }, [canOpenFloating, pipCapability, openDocumentPiP, openVideoPiP]);
+  }, [canOpenFloating, openDocumentPiP, openVideoPiP]);
 
   const disableFloating = useCallback(async () => {
     setFloatingError(null);
@@ -585,6 +598,7 @@ export function useMatchFloatingWindow({
 
   return {
     pipCapability,
+    showPipButton,
     pipMode,
     isFloatingOpen,
     floatingError,
