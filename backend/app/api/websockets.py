@@ -133,6 +133,24 @@ async def start_matchmaking(sid, data):
         online_users[sid]["match_zone"] = match_zone
         online_users[sid]["status"] = "waiting"
 
+    if match_zone == "adult":
+        from app.core.age import is_at_least_age
+        from app.core.legal_adult_age import legal_adult_age_for_country
+
+        meta = online_users.get(sid) or {}
+        by = meta.get("birth_year")
+        country = meta.get("country")
+        min_age = legal_adult_age_for_country(country)
+        try:
+            by_int = int(by) if by is not None else None
+        except (TypeError, ValueError):
+            by_int = None
+        if by_int is None or not is_at_least_age(by_int, min_age):
+            match_zone = "moderated"
+            filters = {**(filters or {}), "match_zone": match_zone}
+            if sid in online_users:
+                online_users[sid]["match_zone"] = match_zone
+
     # Salir de la sala actual si existe (Iniciar con match previo o botón Siguiente)
     if sid in user_rooms:
         await dissolve_active_match(sid, peers_auto_queue=True)

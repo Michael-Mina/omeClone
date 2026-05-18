@@ -32,7 +32,7 @@ type ProfileBaseline = {
 
 export default function Profile() {
   const navigate = useNavigate();
-  const { userId, displayName, role, isAnonymous, setAuth, token } = useAppStore();
+  const { userId, displayName, role, isAnonymous, setAuth, token, salaSessionActive } = useAppStore();
 
   const name = displayName || (isAnonymous ? 'Anónimo' : 'Usuario');
   const initial = (name.trim()[0] || 'U').toUpperCase();
@@ -251,7 +251,7 @@ export default function Profile() {
             </div>
           </div>
           <Link
-            to={role === 'superadmin' ? '/admin' : '/app'}
+            to={role === 'superadmin' ? '/admin' : salaSessionActive ? '/app' : '/salas'}
             className="text-sm font-semibold text-gray-300 hover:text-white bg-gray-900/70 border border-gray-800 px-4 py-2 rounded-full transition-colors"
           >
             Volver

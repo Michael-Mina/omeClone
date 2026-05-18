@@ -1,4 +1,10 @@
-/** Sala de videollamada: moderada (IA + sanciones) o +18 (sin ambas). */
+import {
+  adultZoneBadge,
+  adultZoneLabel,
+  adultZoneSubtitle,
+} from '../data/legalAdultAge';
+
+/** Sala de videollamada: moderada (IA + sanciones) o adulta (sin ambas). */
 export type MatchZone = 'moderated' | 'adult';
 
 export const DEFAULT_MATCH_ZONE: MatchZone = 'moderated';
@@ -25,8 +31,21 @@ export function buildMatchmakingFilters(zone: MatchZone): { match_zone: MatchZon
   return { match_zone: zone };
 }
 
-/** Mayoría de edad según año de nacimiento del perfil. */
-export function userMeetsAdultZone(birthYear: number | null | undefined): boolean {
-  if (birthYear == null || !Number.isFinite(birthYear)) return false;
-  return new Date().getFullYear() - birthYear >= 18;
+export {
+  getLegalAdultAge,
+  adultZoneBadge,
+  adultZoneLabel,
+  adultZoneSubtitle,
+  userMeetsAdultZone,
+  adultZoneBlockedHint,
+} from '../data/legalAdultAge';
+
+/** Textos de sala adulta según país del perfil. */
+export function getAdultZoneDisplay(country: string | null | undefined) {
+  return {
+    label: adultZoneLabel(country),
+    subtitle: adultZoneSubtitle(country),
+    badge: adultZoneBadge(country),
+    accent: MATCH_ZONE_META.adult.accent,
+  };
 }

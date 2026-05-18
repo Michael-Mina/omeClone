@@ -11,9 +11,7 @@ import { useNsfwEnforcement, NSFW_STRIKES_FOR_PERMANENT } from './hooks/useNsfwE
 import type { NsfwDetectionRuntimeConfig } from './hooks/useNSFWDetection';
 import type { NsfwEnforcementRuntime } from './hooks/useNsfwEnforcement';
 import { MatchChatPanel, type ChatLine } from './components/MatchChatPanel';
-import { MatchZonePicker } from './components/MatchZonePicker';
-import { MATCH_ZONE_META, userMeetsAdultZone } from './types/matchZone';
-import type { MatchZone } from './types/matchZone';
+import { MATCH_ZONE_META, getAdultZoneDisplay, userMeetsAdultZone } from './types/matchZone';
 import { translateForChatDisplay, resolveTranslateTargetLang } from './utils/chatTranslate';
 import { languageLabel } from './data/profileOptions';
 import { apiUrl } from './config/apiBase';
@@ -62,8 +60,13 @@ function App() {
     country,
     birthYear,
     matchZone,
-    setMatchZone,
+    setSalaSessionActive,
   } = useAppStore();
+
+  const adultZoneDisplay = useMemo(() => getAdultZoneDisplay(country), [country]);
+  const zoneDisplay =
+    matchZone === 'adult' ? adultZoneDisplay : MATCH_ZONE_META[matchZone];
+
   const {
     localVideoRef,
     remoteVideoRef,
@@ -106,9 +109,6 @@ function App() {
     exemptFromNsfwPolicy,
     nsfwDetectionRuntime
   );
-  const canEnterAdultZone = userMeetsAdultZone(birthYear);
-  const adultZoneBlockedHint =
-    'Indica tu año de nacimiento en el perfil (mayor de 18) para entrar a la sala +18.';
   const {
     visualBlur,
     overlayKind,
@@ -222,7 +222,7 @@ function App() {
     const s = useAppStore.getState();
     if (s.matchStatus === 'waiting' || s.matchStatus === 'stopped') return;
     if (!socket.connected) return;
-    if (s.matchZone === 'adult' && !userMeetsAdultZone(s.birthYear)) {
+    if (s.matchZone === 'adult' && !userMeetsAdultZone(s.birthYear, s.country)) {
       s.setMatchZone('moderated');
     }
     s.setMatchStatus('waiting');
@@ -235,7 +235,7 @@ function App() {
     const s = useAppStore.getState();
     if (s.matchStatus !== 'idle' && s.matchStatus !== 'waiting') return;
     if (!socket.connected) return;
-    if (s.matchZone === 'adult' && !userMeetsAdultZone(s.birthYear)) {
+    if (s.matchZone === 'adult' && !userMeetsAdultZone(s.birthYear, s.country)) {
       s.setMatchZone('moderated');
     }
     if (s.matchStatus === 'idle') s.setMatchStatus('waiting');
@@ -489,27 +489,15 @@ function App() {
   }, [stopMatch]);
 
   const handleResume = useCallback(() => {
-    const s = useAppStore.getState();
-    if (s.matchZone === 'adult' && !userMeetsAdultZone(s.birthYear)) {
-      setMatchZone('moderated');
-    }
     resetMatch();
-  }, [resetMatch, setMatchZone]);
+  }, [resetMatch]);
 
-  const handleMatchZoneChange = useCallback(
-    (zone: MatchZone) => {
-      if (zone === 'adult' && !canEnterAdultZone) return;
-      const s = useAppStore.getState();
-      if (s.matchZone === zone) return;
-      setMatchZone(zone);
-      if (s.matchStatus === 'waiting' || s.matchStatus === 'idle') {
-        socket.emit('cancel_matchmaking', {});
-        s.setMatchStatus('waiting');
-        emitStartMatchmaking();
-      }
-    },
-    [canEnterAdultZone, setMatchZone]
-  );
+  const goToSalas = useCallback(() => {
+    socket.emit('cancel_matchmaking', {});
+    stopMatch();
+    setSalaSessionActive(false);
+    navigate('/salas', { replace: true });
+  }, [stopMatch, setSalaSessionActive, navigate]);
 
   /** Durante bloqueo IA no debe seguir en cola ni en llamada. */
   useEffect(() => {
@@ -712,12 +700,14 @@ function App() {
             )}
           </button>
 
-          <span
-            className={`hidden sm:inline text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-gradient-to-r ${MATCH_ZONE_META[matchZone].accent}`}
-            title={MATCH_ZONE_META[matchZone].subtitle}
+          <button
+            type="button"
+            onClick={goToSalas}
+            className={`hidden sm:inline text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full bg-gradient-to-r ${zoneDisplay.accent} hover:opacity-90 transition-opacity`}
+            title="Cambiar de sala"
           >
-            {MATCH_ZONE_META[matchZone].badge}
-          </span>
+            {zoneDisplay.badge} · Cambiar
+          </button>
 
           <span className="text-xs md:text-sm text-gray-400 font-medium">
             En línea: <span className="text-blue-400">{onlineUsers}</span>
@@ -786,20 +776,14 @@ function App() {
 
           {/* Esperando match (incluye idle antes de entrar en cola: todo automático) */}
           {(matchStatus === 'idle' || matchStatus === 'waiting') && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-950/80 backdrop-blur-sm z-10 p-4 overflow-y-auto">
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-950/80 backdrop-blur-sm z-10 p-4">
               <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4 shrink-0" />
-              <p className="text-xl font-medium animate-pulse mb-6 text-center">
-                {matchStatus === 'idle' ? 'Preparando búsqueda...' : 'Buscando a alguien...'}
+              <p className="text-xl font-medium animate-pulse text-center">
+                {matchStatus === 'idle' ? 'Preparando búsqueda...' : 'Buscando en la sala…'}
               </p>
-              <div className="w-full max-w-lg">
-                <MatchZonePicker
-                  value={matchZone}
-                  onChange={handleMatchZoneChange}
-                  adultDisabled={!canEnterAdultZone}
-                  adultDisabledHint={adultZoneBlockedHint}
-                  compact
-                />
-              </div>
+              <p className="text-sm text-gray-400 mt-2 text-center">
+                {zoneDisplay.label} — solo personas en esta sala
+              </p>
             </div>
           )}
 
@@ -808,23 +792,25 @@ function App() {
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/95 z-10 p-4 overflow-y-auto">
               <StopCircle size={40} className="text-red-400 mb-3 shrink-0" />
               <p className="text-lg text-gray-300 font-medium mb-1">Conexión detenida</p>
-              <p className="text-sm text-gray-500 mb-4 text-center">Elige sala y reanuda la búsqueda</p>
-              <div className="w-full max-w-lg mb-5">
-                <MatchZonePicker
-                  value={matchZone}
-                  onChange={handleMatchZoneChange}
-                  adultDisabled={!canEnterAdultZone}
-                  adultDisabledHint={adultZoneBlockedHint}
-                  compact
-                />
+              <p className="text-sm text-gray-500 mb-6 text-center">
+                Sala {zoneDisplay.label}
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={handleResume}
+                  className="px-8 py-3 rounded-xl font-bold text-base flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-95 shadow-lg bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white"
+                >
+                  <Play size={20} fill="currentColor" /> Reanudar búsqueda
+                </button>
+                <button
+                  type="button"
+                  onClick={goToSalas}
+                  className="px-8 py-3 rounded-xl font-bold text-base border border-gray-600 text-gray-200 hover:bg-gray-800 transition-colors"
+                >
+                  Cambiar sala
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={handleResume}
-                className="px-8 py-3 rounded-xl font-bold text-base flex items-center gap-2 transition-all transform hover:scale-[1.03] active:scale-95 shadow-lg bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white shrink-0"
-              >
-                <Play size={20} fill="currentColor" /> Reanudar en {MATCH_ZONE_META[matchZone].badge}
-              </button>
             </div>
           )}
           

@@ -17,6 +17,8 @@ interface AppState {
   birthYear: number | null;
   /** Sala de videollamada elegida (colas separadas en el servidor). */
   matchZone: MatchZone;
+  /** true tras elegir sala en /salas y entrar a videollamadas. */
+  salaSessionActive: boolean;
   matchStatus: 'idle' | 'waiting' | 'matched' | 'stopped';
   roomId: string | null;
   peerSid: string | null;
@@ -41,6 +43,7 @@ interface AppState {
   resetMatch: () => void;
   stopMatch: () => void;
   setMatchZone: (zone: MatchZone) => void;
+  setSalaSessionActive: (active: boolean) => void;
   /** Sincronía desde servidor (admin / socket) sin volver a iniciar sesión. */
   applyServerExemptionSync: (p: { exemptFromAiCensorship: boolean }) => void;
 }
@@ -59,6 +62,7 @@ export const useAppStore = create<AppState>()(
       language: null,
       birthYear: null,
       matchZone: DEFAULT_MATCH_ZONE,
+      salaSessionActive: false,
       matchStatus: 'idle',
       roomId: null,
       peerSid: null,
@@ -82,6 +86,7 @@ export const useAppStore = create<AppState>()(
       resetMatch: () => set({ matchStatus: 'idle', roomId: null, peerSid: null, isInitiator: false }),
       stopMatch: () => set({ matchStatus: 'stopped', roomId: null, peerSid: null, isInitiator: false }),
       setMatchZone: (zone) => set({ matchZone: zone }),
+      setSalaSessionActive: (active) => set({ salaSessionActive: active }),
       applyServerExemptionSync: (p) => set({ exemptFromAiCensorship: p.exemptFromAiCensorship }),
     }),
     {

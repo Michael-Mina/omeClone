@@ -1,8 +1,9 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import App from './App';
 import Login from './pages/Login';
+import SalasPage from './pages/SalasPage';
+import { AppRouteGuard } from './routes/AppRouteGuard';
 import Register from './pages/Register';
 import AdminDashboard from './pages/AdminDashboard';
 import Profile from './pages/Profile';
@@ -35,7 +36,7 @@ export const Router = () => {
 
   const getDashboardRoute = () => {
     if (!token) return "/login";
-    return role === 'superadmin' ? "/admin" : "/app";
+    return role === 'superadmin' ? '/admin' : '/salas';
   };
 
   /** Coincide con `base` de Vite (GitHub Pages en subruta, p. ej. `/omeClone/`). */
@@ -50,12 +51,24 @@ export const Router = () => {
           <Route path="/login" element={!token ? <Login /> : <Navigate to={getDashboardRoute()} />} />
           <Route path="/register" element={!token ? <Register /> : <Navigate to={getDashboardRoute()} />} />
 
-          {/* Protected app route */}
+          {/* Elegir sala antes de videollamadas */}
+          <Route
+            path="/salas"
+            element={
+              token && role !== 'superadmin' ? (
+                <SalasPage />
+              ) : (
+                <Navigate to={!token ? '/login' : '/admin'} replace />
+              )
+            }
+          />
+
+          {/* Videollamadas (requiere haber pasado por /salas) */}
           <Route
             path="/app"
             element={
               token && role !== 'superadmin' ? (
-                <App />
+                <AppRouteGuard />
               ) : (
                 <Navigate to={!token ? '/login' : '/admin'} replace />
               )
@@ -69,7 +82,7 @@ export const Router = () => {
               token && role === 'superadmin' ? (
                 <AdminDashboard />
               ) : (
-                <Navigate to={!token ? '/login' : '/app'} replace />
+                <Navigate to={!token ? '/login' : '/salas'} replace />
               )
             }
           />
