@@ -17,6 +17,7 @@ import { languageLabel } from './data/profileOptions';
 import { apiUrl } from './config/apiBase';
 import { useChatTranslateMode } from './hooks/useChatTranslateMode';
 import { useMdUp } from './hooks/useMdUp';
+import { useMatchFloatingWindow } from './hooks/useMatchFloatingWindow';
 import {
   Video,
   SkipForward,
@@ -34,6 +35,7 @@ import {
   Mic,
   MicOff,
   Volume2,
+  PictureInPicture2,
 } from 'lucide-react';
 
 const MOBILE_PIP_W = 128;
@@ -482,6 +484,14 @@ function App() {
     requestNewMatch();
   }, [requestNewMatch]);
 
+  const { tryOpenFloating, supportsDocumentPiP } = useMatchFloatingWindow({
+    active: matchStatus === 'matched',
+    remoteVideoRef,
+    micMuted,
+    onToggleMic: toggleMicMuted,
+    onNext: handleStartNext,
+  });
+
   const handleStop = useCallback(() => {
     // Disconnect from current peer and stop matchmaking
     socket.emit('cancel_matchmaking', {});
@@ -883,6 +893,18 @@ function App() {
                   <span>IA</span>
                   <span className="text-gray-500">24/7</span>
                 </div>
+
+                {matchStatus === 'matched' && supportsDocumentPiP && (
+                  <button
+                    type="button"
+                    onClick={() => tryOpenFloating()}
+                    className="h-11 w-11 md:h-10 md:w-10 shrink-0 rounded-full flex items-center justify-center text-white shadow-md bg-gray-800 ring-1 ring-white/10 hover:bg-gray-700 hover:scale-105 active:scale-95 transition-all"
+                    title="Ventana flotante (al cambiar de app)"
+                    aria-label="Abrir ventana flotante"
+                  >
+                    <PictureInPicture2 size={20} strokeWidth={2} />
+                  </button>
+                )}
 
                 {/* Next / Start — solo icono */}
                 <button

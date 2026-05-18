@@ -39,6 +39,7 @@ import { MatchChatPanel, type ChatLine } from '../components/MatchChatPanel';
 import { translateForChatDisplay, resolveTranslateTargetLang } from '../utils/chatTranslate';
 import { useChatTranslateMode } from '../hooks/useChatTranslateMode';
 import { useMdUp } from '../hooks/useMdUp';
+import { getAdultZoneDisplay } from '../types/matchZone';
 
 interface ConnectedPeer {
   sid: string;
@@ -64,6 +65,8 @@ interface DashboardUser {
   exempt_from_ai_censorship?: boolean;
   /** Sala Socket.IO del match (misma para ambos usuarios); sirve para retransmitir chat al monitor. */
   match_room_id?: string | null;
+  /** Cola de matchmaking: moderated | adult (solo si está conectado). */
+  match_zone?: string | null;
 }
 
 /** Clave estable para guardar favoritos (antes user_id||row_key fallaba con offline-* vs id). */
@@ -144,6 +147,26 @@ function statusTextClass(u: DashboardUser): string {
   return 'text-gray-500';
 }
 
+function adminMatchZoneBadge(u: DashboardUser): { text: string; title: string; className: string } {
+  if (u.presence === 'offline' || !u.sid) {
+    return { text: '—', title: 'Usuario desconectado', className: 'bg-gray-800/80 text-gray-500' };
+  }
+  if (u.match_zone === 'adult') {
+    const d = getAdultZoneDisplay(u.country);
+    return {
+      text: d.badge,
+      title: `${d.label} — sin censura IA`,
+      className:
+        'bg-gradient-to-r from-rose-700/90 to-orange-600/90 text-white font-black tracking-wide',
+    };
+  }
+  return {
+    text: 'Mod.',
+    title: 'Sala estándar — moderación IA activa',
+    className: 'bg-blue-900/60 text-blue-200 font-bold',
+  };
+}
+
 const AdminDashboard: React.FC = () => {
   const { setAuth, userId, language, token, displayName, role } = useAppStore();
   const navigate = useNavigate();
@@ -165,6 +188,7 @@ const AdminDashboard: React.FC = () => {
   const [filterCountry, setFilterCountry] = useState('');
   const [filterLanguage, setFilterLanguage] = useState('');
   const [filterPresence, setFilterPresence] = useState('');
+  const [filterMatchZone, setFilterMatchZone] = useState('');
   const [filterAnonType, setFilterAnonType] = useState('');
   const [filterAgeMin, setFilterAgeMin] = useState('');
   const [filterAgeMax, setFilterAgeMax] = useState('');
@@ -558,6 +582,7 @@ const AdminDashboard: React.FC = () => {
     filterCountry,
     filterLanguage,
     filterPresence,
+    filterMatchZone,
     filterAnonType,
     filterAgeMin,
     filterAgeMax,
@@ -788,6 +813,7 @@ const AdminDashboard: React.FC = () => {
     setFilterCountry('');
     setFilterLanguage('');
     setFilterPresence('');
+    setFilterMatchZone('');
     setFilterAnonType('');
     setFilterAgeMin('');
     setFilterAgeMax('');
@@ -800,6 +826,7 @@ const AdminDashboard: React.FC = () => {
     if (filterCountry) n++;
     if (filterLanguage) n++;
     if (filterPresence) n++;
+    if (filterMatchZone) n++;
     if (filterAnonType) n++;
     if (filterAgeMin.trim()) n++;
     if (filterAgeMax.trim()) n++;
@@ -809,6 +836,7 @@ const AdminDashboard: React.FC = () => {
     filterCountry,
     filterLanguage,
     filterPresence,
+    filterMatchZone,
     filterAnonType,
     filterAgeMin,
     filterAgeMax,
@@ -843,6 +871,12 @@ const AdminDashboard: React.FC = () => {
       if (filterPresence === 'online' && !online) return false;
       if (filterPresence === 'in_call' && u.presence !== 'in_call') return false;
       if (filterPresence === 'waiting' && u.presence !== 'waiting') return false;
+    }
+
+    if (filterMatchZone) {
+      if (u.presence === 'offline' || !u.sid) return false;
+      const zone = u.match_zone === 'adult' ? 'adult' : 'moderated';
+      if (zone !== filterMatchZone) return false;
     }
 
     if (filterAnonType === 'anon' && !u.is_anonymous) return false;
@@ -885,6 +919,7 @@ const AdminDashboard: React.FC = () => {
     const banExempt = Boolean(user.exempt_from_ban);
     const aiExempt = Boolean(user.exempt_from_ai_censorship);
     const dbId = user.db_user_id;
+    const zoneBadge = adminMatchZoneBadge(user);
 
     return (
       <tr
@@ -953,6 +988,15 @@ const AdminDashboard: React.FC = () => {
           <span className={`flex items-center gap-1.5 ${statusTextClass(user)} text-xs whitespace-nowrap`}>
             <span className={`w-2 h-2 rounded-full shrink-0 ${statusDotClass(user)}`} />
             {statusLabel(user)}
+          </span>
+        </td>
+
+        <td className="px-3 py-3">
+          <span
+            className={`inline-block px-2 py-0.5 rounded-md text-[10px] uppercase whitespace-nowrap ${zoneBadge.className}`}
+            title={zoneBadge.title}
+          >
+            {zoneBadge.text}
           </span>
         </td>
 
@@ -1073,6 +1117,7 @@ const AdminDashboard: React.FC = () => {
     const aiExempt = Boolean(user.exempt_from_ai_censorship);
     const dbId = user.db_user_id;
     const age = approxAge(user.birth_year);
+    const zoneBadge = adminMatchZoneBadge(user);
 
     return (
       <div
@@ -1124,6 +1169,13 @@ const AdminDashboard: React.FC = () => {
               <span className={`inline-flex items-center gap-1 ${statusTextClass(user)}`}>
                 <span className={`size-1.5 rounded-full shrink-0 ${statusDotClass(user)}`} />
                 {statusLabel(user)}
+              </span>
+              <span className="text-gray-700">·</span>
+              <span
+                className={`px-1 py-px rounded text-[8px] font-bold uppercase ${zoneBadge.className}`}
+                title={zoneBadge.title}
+              >
+                {zoneBadge.text}
               </span>
               <span className="text-gray-700">·</span>
               <span>{user.is_anonymous ? 'Anón.' : 'Reg.'}</span>
@@ -1435,6 +1487,15 @@ const AdminDashboard: React.FC = () => {
                 <option value="offline">Fuera de línea</option>
               </select>
               <select
+                value={filterMatchZone}
+                onChange={(e) => setFilterMatchZone(e.target.value)}
+                className={`${selectCls} sm:max-w-[10rem]`}
+              >
+                <option value="">Sala</option>
+                <option value="moderated">Sala estándar</option>
+                <option value="adult">Sala adulta (+18/+21…)</option>
+              </select>
+              <select
                 value={filterAnonType}
                 onChange={(e) => setFilterAnonType(e.target.value)}
                 className={selectCls}
@@ -1540,6 +1601,7 @@ const AdminDashboard: React.FC = () => {
                     <th className="px-3 py-3 font-semibold">ID</th>
                     <th className="px-3 py-3 font-semibold">Rol</th>
                     <th className="px-3 py-3 font-semibold">Estado</th>
+                    <th className="px-3 py-3 font-semibold">Sala</th>
                     <th className="px-3 py-3 font-semibold">Género</th>
                     <th className="px-3 py-3 font-semibold">Edad</th>
                     <th className="px-3 py-3 font-semibold">País</th>

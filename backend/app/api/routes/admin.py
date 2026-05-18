@@ -178,6 +178,7 @@ def get_dashboard_users(db: Session = Depends(get_db), current_user: User = Depe
             "exempt_from_ban": bool(getattr(u, "exempt_from_ban", False)),
             "exempt_from_ai_censorship": bool(getattr(u, "exempt_from_ai_censorship", False)),
             "match_room_id": None,
+            "match_zone": None,
         })
 
     users_list.sort(key=_presence_sort_key)
