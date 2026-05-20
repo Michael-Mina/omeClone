@@ -17,6 +17,7 @@ import {
   XCircle,
   Video,
   VideoOff,
+  MoreHorizontal,
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { apiUrl } from '../config/apiBase';
@@ -48,6 +49,60 @@ function statusLabel(u: DashboardUser | null): string {
   return 'Desconectado';
 }
 
+type AssignUserPickerProps = {
+  slotIndex: number;
+  userSearch: string;
+  onUserSearchChange: (q: string) => void;
+  candidates: DashboardUser[];
+  onSelect: (user: DashboardUser) => void;
+  listClassName?: string;
+};
+
+function AssignUserPickerList({
+  slotIndex: _slotIndex,
+  userSearch,
+  onUserSearchChange,
+  candidates,
+  onSelect,
+  listClassName = '',
+}: AssignUserPickerProps) {
+  return (
+    <>
+      <div className="shrink-0 px-4 pb-3">
+        <div className="relative">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+          <input
+            value={userSearch}
+            onChange={(e) => onUserSearchChange(e.target.value)}
+            placeholder="Buscar usuario…"
+            className="w-full bg-gray-900 border border-gray-700 rounded-xl pl-9 pr-3 py-3 text-sm text-white outline-none focus:border-cyan-500"
+            autoFocus
+          />
+        </div>
+      </div>
+      <div
+        className={`flex-1 overflow-y-auto overscroll-contain px-4 pb-2 space-y-2 min-h-0 ${listClassName}`}
+      >
+        {candidates.length === 0 ? (
+          <p className="text-sm text-gray-500 text-center py-10">No hay usuarios en línea.</p>
+        ) : (
+          candidates.map((u) => (
+            <button
+              key={u.row_key}
+              type="button"
+              onClick={() => onSelect(u)}
+              className="w-full text-left rounded-xl px-4 py-3 bg-gray-900 border border-gray-800 hover:bg-gray-800 active:bg-gray-700"
+            >
+              <p className="text-sm font-semibold text-white truncate">{u.display_name || 'Usuario'}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{statusLabel(u)}</p>
+            </button>
+          ))
+        )}
+      </div>
+    </>
+  );
+}
+
 export default function AdminMonitorWall() {
   const { token, displayName, role, userId, language } = useAppStore();
   const mdUp = useMdUp();
@@ -58,6 +113,7 @@ export default function AdminMonitorWall() {
   const [users, setUsers] = useState<DashboardUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [pickerSlot, setPickerSlot] = useState<number | null>(null);
+  const [slotMenuSlot, setSlotMenuSlot] = useState<number | null>(null);
   const [userSearch, setUserSearch] = useState('');
   const [focusedSlot, setFocusedSlot] = useState<number | null>(null);
   const [focusAudioOn, setFocusAudioOn] = useState(true);
@@ -328,8 +384,7 @@ export default function AdminMonitorWall() {
 
   const assignUser = (slotIndex: number, user: DashboardUser) => {
     setSlotBinding(slotIndex, bindingFromUser(user));
-    setPickerSlot(null);
-    setUserSearch('');
+    closePicker();
   };
 
   const clearSlot = (slotIndex: number) => {
@@ -345,9 +400,15 @@ export default function AdminMonitorWall() {
   };
 
   const openPicker = (slotIndex: number) => {
+    setSlotMenuSlot(null);
     setPickerSlot(slotIndex);
     setUserSearch('');
     if (!mdUp) setFocusedSlot(null);
+  };
+
+  const closePicker = () => {
+    setPickerSlot(null);
+    setUserSearch('');
   };
 
   const compact = !mdUp;
@@ -440,10 +501,7 @@ export default function AdminMonitorWall() {
             compact && focusedSlot != null ? 'hidden' : 'flex-1 overflow-y-auto overscroll-contain'
           }`}
         >
-          <div
-            className="h-full w-full grid gap-1 md:gap-1.5"
-            style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
-          >
+          <div className="w-full grid grid-cols-2 xl:grid-cols-4 gap-2 md:gap-1.5">
             {Array.from({ length: MONITOR_WALL_SLOT_COUNT }, (_, i) => {
               const binding = bindings[i];
               const user = resolveUserByBinding(users, binding);
@@ -457,11 +515,18 @@ export default function AdminMonitorWall() {
                   key={i}
                   role="button"
                   tabIndex={0}
-                  onClick={() => binding && openFocus(i)}
-                  onKeyDown={(e) => {
-                    if ((e.key === 'Enter' || e.key === ' ') && binding) openFocus(i);
+                  onClick={() => {
+                    if (compact) {
+                      if (binding) openFocus(i);
+                      else openPicker(i);
+                    } else if (binding) openFocus(i);
                   }}
-                  className={`relative aspect-video rounded-md overflow-hidden border bg-gray-950 text-left cursor-pointer ${
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    if (compact && !binding) openPicker(i);
+                    else if (binding) openFocus(i);
+                  }}
+                  className={`relative aspect-video rounded-lg overflow-hidden border bg-gray-950 text-left cursor-pointer ${
                     isFocused
                       ? 'border-cyan-500 ring-2 ring-cyan-500/50'
                       : isPicking
@@ -486,19 +551,39 @@ export default function AdminMonitorWall() {
                   >
                     {!live && (
                       <div className="flex-1 flex flex-col items-center justify-center text-gray-600 gap-1 p-2">
-                        <VideoOff size={24} strokeWidth={1.5} />
-                        <span className="text-[10px] text-center">
-                          {binding ? 'Sin señal' : 'Vacío'}
+                        <VideoOff size={compact ? 28 : 24} strokeWidth={1.5} />
+                        <span className={`text-center ${compact ? 'text-xs' : 'text-[10px]'}`}>
+                          {binding ? 'Sin señal' : compact ? 'Toca para asignar' : 'Vacío'}
                         </span>
                       </div>
                     )}
-                    <div className="mt-auto bg-black/80 px-1.5 py-1 flex items-center justify-between gap-1 pointer-events-auto">
+                    <div className="mt-auto bg-black/85 px-2 py-1.5 flex items-center justify-between gap-1 pointer-events-auto">
                       <div className="min-w-0">
-                        <p className="text-[10px] font-bold text-white truncate leading-tight">
-                          {binding ? bindingLabel(users, binding) : `M${i + 1}`}
+                        <p
+                          className={`font-bold text-white truncate leading-tight ${
+                            compact ? 'text-xs' : 'text-[10px]'
+                          }`}
+                        >
+                          {binding ? bindingLabel(users, binding) : `Monitor ${i + 1}`}
                         </p>
-                        <p className="text-[9px] text-gray-400 truncate">{statusLabel(user)}</p>
+                        <p className={`text-gray-400 truncate ${compact ? 'text-[10px]' : 'text-[9px]'}`}>
+                          {statusLabel(user)}
+                        </p>
                       </div>
+                      {compact ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSlotMenuSlot(i);
+                          }}
+                          className="p-1.5 rounded-lg bg-gray-800 text-gray-200 hover:bg-gray-700 shrink-0"
+                          title="Opciones"
+                          aria-label="Opciones del monitor"
+                        >
+                          <MoreHorizontal size={16} />
+                        </button>
+                      ) : (
                       <div className="flex shrink-0 gap-0.5">
                         {live && (
                           <button
@@ -521,8 +606,7 @@ export default function AdminMonitorWall() {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (isPicking) setPickerSlot(null);
-                            else openPicker(i);
+                            openPicker(i);
                           }}
                           className="p-1 rounded bg-gray-800 text-cyan-300 hover:bg-gray-700"
                           title="Asignar usuario"
@@ -543,6 +627,7 @@ export default function AdminMonitorWall() {
                           </button>
                         )}
                       </div>
+                      )}
                     </div>
                   </div>
                   <span className="absolute top-1 left-1 text-[9px] font-mono bg-black/60 text-gray-400 px-1 rounded pointer-events-none">
@@ -712,68 +797,131 @@ export default function AdminMonitorWall() {
         </div>
 
         {compact && pickerSlot != null && (
-          <>
             <div
-              role="presentation"
-              className="fixed inset-0 z-40 bg-black/70 backdrop-blur-[2px]"
-              onClick={() => setPickerSlot(null)}
-            />
-            <aside className="fixed inset-x-0 bottom-0 z-50 flex max-h-[min(78dvh,520px)] flex-col rounded-t-2xl border-t border-gray-700 bg-gray-950 shadow-2xl">
-              <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-gray-600 shrink-0" aria-hidden />
-              <div className="shrink-0 flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-800">
-                <p className="text-sm font-bold text-white flex items-center gap-2 min-w-0">
-                  <User size={16} className="text-cyan-400 shrink-0" />
+              className="fixed inset-0 z-[55] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="assign-monitor-title"
+              onClick={closePicker}
+            >
+            <div
+              className="relative w-full max-w-md max-h-[min(85dvh,560px)] flex flex-col rounded-2xl border border-gray-700 bg-gray-950 shadow-2xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="shrink-0 flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-800">
+                <h2 id="assign-monitor-title" className="text-base font-bold text-white flex items-center gap-2 min-w-0">
+                  <User size={18} className="text-cyan-400 shrink-0" />
                   <span className="truncate">Asignar monitor {pickerSlot + 1}</span>
-                </p>
+                </h2>
                 <button
                   type="button"
-                  onClick={() => setPickerSlot(null)}
-                  className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800"
+                  onClick={closePicker}
+                  className="p-2 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white"
                   aria-label="Cerrar"
                 >
-                  <X size={18} />
+                  <X size={20} />
                 </button>
               </div>
-              <div className="shrink-0 px-3 pb-2">
-                <div className="relative">
-                  <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
-                  <input
-                    value={userSearch}
-                    onChange={(e) => setUserSearch(e.target.value)}
-                    placeholder="Buscar usuario…"
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg pl-8 pr-2 py-2.5 text-sm text-white outline-none focus:border-cyan-500"
-                  />
+              <AssignUserPickerList
+                slotIndex={pickerSlot}
+                userSearch={userSearch}
+                onUserSearchChange={setUserSearch}
+                candidates={pickerCandidates}
+                onSelect={(u) => assignUser(pickerSlot, u)}
+              />
+            </div>
+          </div>
+        )}
+
+        {compact && slotMenuSlot != null && (() => {
+          const mi = slotMenuSlot;
+          const slotBinding = bindings[mi];
+          const slotUser = resolveUserByBinding(users, slotBinding);
+          const slotLive = Boolean(slotUser?.sid && slotUser.presence !== 'offline');
+          const slotAudioOn = audioEnabled[mi];
+          return (
+            <div
+              className="fixed inset-0 z-[54] flex items-end justify-center p-4 bg-black/70 backdrop-blur-sm"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="slot-menu-title"
+              onClick={() => setSlotMenuSlot(null)}
+            >
+              <div
+                className="w-full max-w-sm rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl overflow-hidden mb-[env(safe-area-inset-bottom)]"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <p id="slot-menu-title" className="px-4 py-3 border-b border-gray-800 text-sm font-bold text-white">
+                  Monitor {mi + 1}
+                  {slotBinding ? ` · ${bindingLabel(users, slotBinding)}` : ''}
+                </p>
+                <div className="p-2 flex flex-col gap-1">
+                  {slotBinding && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSlotMenuSlot(null);
+                        openFocus(mi);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-white hover:bg-gray-800"
+                    >
+                      <Maximize2 size={18} className="text-purple-400 shrink-0" />
+                      Ver en grande
+                    </button>
+                  )}
+                  {slotLive && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        toggleSlotAudio(mi);
+                        setSlotMenuSlot(null);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-white hover:bg-gray-800"
+                    >
+                      {slotAudioOn ? (
+                        <VolumeX size={18} className="text-emerald-400 shrink-0" />
+                      ) : (
+                        <Volume2 size={18} className="text-gray-400 shrink-0" />
+                      )}
+                      {slotAudioOn ? 'Silenciar audio' : 'Escuchar audio'}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSlotMenuSlot(null);
+                      openPicker(mi);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-white hover:bg-gray-800"
+                  >
+                    <User size={18} className="text-cyan-400 shrink-0" />
+                    {slotBinding ? 'Cambiar usuario' : 'Asignar usuario'}
+                  </button>
+                  {slotBinding && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearSlot(mi);
+                        setSlotMenuSlot(null);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-red-300 hover:bg-red-950/40"
+                    >
+                      <X size={18} className="shrink-0" />
+                      Quitar de este monitor
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setSlotMenuSlot(null)}
+                    className="w-full mt-1 py-3 text-sm font-semibold rounded-xl border border-gray-700 text-gray-300"
+                  >
+                    Cancelar
+                  </button>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto overscroll-contain px-3 pb-2 space-y-1.5 min-h-0">
-                {pickerCandidates.length === 0 ? (
-                  <p className="text-xs text-gray-500 text-center py-8">No hay usuarios en línea.</p>
-                ) : (
-                  pickerCandidates.map((u) => (
-                    <button
-                      key={u.row_key}
-                      type="button"
-                      onClick={() => assignUser(pickerSlot, u)}
-                      className="w-full text-left rounded-xl px-3 py-3 bg-gray-900 border border-gray-800 active:bg-gray-800"
-                    >
-                      <p className="text-sm font-semibold text-white truncate">{u.display_name || 'Usuario'}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{statusLabel(u)}</p>
-                    </button>
-                  ))
-                )}
-              </div>
-              <div className="shrink-0 p-3 border-t border-gray-800 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-                <button
-                  type="button"
-                  onClick={() => setPickerSlot(null)}
-                  className="w-full py-3 text-sm font-semibold rounded-xl bg-gray-800 text-gray-200"
-                >
-                  Cerrar
-                </button>
-              </div>
-            </aside>
-          </>
-        )}
+            </div>
+          );
+        })()}
 
         <aside
           className={`shrink-0 border-t xl:border-t-0 xl:border-l border-gray-800 bg-gray-950 flex flex-col w-full xl:w-72 min-h-0 max-xl:hidden ${
