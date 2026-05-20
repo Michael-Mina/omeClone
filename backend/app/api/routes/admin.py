@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.db.session import get_db
@@ -8,6 +10,8 @@ from app.schemas.user import UserExemptionsUpdate
 from app.models.system_settings import SystemSettings
 from app.schemas.global_settings import NsfwGlobalPatch, NsfwGlobalAdminOut
 from app.schemas.billing import AdminPremiumPatch, BillingSettingsOut, BillingSettingsPatch
+from app.models.suggestion import Suggestion
+from app.schemas.suggestion import SuggestionListOut, SuggestionOut
 from app.services.nsfw_client_params import clamp_intensity, intensity_to_client_params
 from app.services.premium import apply_premium_active, clear_premium, user_has_premium, premium_status_dict
 from app.core.config import settings as app_settings
@@ -377,3 +381,55 @@ async def admin_set_user_premium(
         if _ws_user_id_matches_db(info.get("user_id"), user.id):
             await sio.emit("premium_updated", payload, to=str(sid))
     return payload
+
+
+def _suggestion_to_out(row: Suggestion, user: User | None) -> SuggestionOut:
+    return SuggestionOut(
+        id=row.id,
+        user_id=row.user_id,
+        display_name=user.display_name if user else None,
+        email=user.email if user else None,
+        is_anonymous=bool(user.is_anonymous) if user else False,
+        message=row.message,
+        created_at=row.created_at,
+        read_at=row.read_at,
+    )
+
+
+@router.get("/suggestions", response_model=SuggestionListOut)
+def admin_list_suggestions(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_superuser),
+    limit: int = 200,
+):
+    cap = max(1, min(limit, 500))
+    rows = (
+        db.query(Suggestion)
+        .order_by(Suggestion.created_at.desc())
+        .limit(cap)
+        .all()
+    )
+    user_ids = {r.user_id for r in rows if r.user_id is not None}
+    users_by_id: dict[int, User] = {}
+    if user_ids:
+        for u in db.query(User).filter(User.id.in_(user_ids)).all():
+            users_by_id[u.id] = u
+
+    items = [_suggestion_to_out(r, users_by_id.get(r.user_id) if r.user_id else None) for r in rows]
+    unread = db.query(Suggestion).filter(Suggestion.read_at.is_(None)).count()
+    return SuggestionListOut(items=items, unread_count=unread)
+
+
+@router.post("/suggestions/mark-all-read")
+def admin_mark_suggestions_read(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_superuser),
+):
+    now = datetime.now(timezone.utc)
+    updated = (
+        db.query(Suggestion)
+        .filter(Suggestion.read_at.is_(None))
+        .update({Suggestion.read_at: now}, synchronize_session=False)
+    )
+    db.commit()
+    return {"marked": updated}

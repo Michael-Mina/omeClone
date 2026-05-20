@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
-import { User, LogOut, LogIn, ShieldCheck, Loader2, Crown } from 'lucide-react';
+import { User, LogOut, LogIn, ShieldCheck, Loader2, Crown, MessageSquare } from 'lucide-react';
 import {
   GENDER_OPTIONS,
   COUNTRY_OPTIONS,
@@ -56,6 +56,9 @@ export default function Profile() {
   const [saveOk, setSaveOk] = useState<string | null>(null);
   /** Valores tal como vienen del servidor; solo se comparan al guardar para armar un PATCH parcial. */
   const [baseline, setBaseline] = useState<ProfileBaseline | null>(null);
+  const [suggestionText, setSuggestionText] = useState('');
+  const [suggestionSending, setSuggestionSending] = useState(false);
+  const [suggestionOk, setSuggestionOk] = useState<string | null>(null);
 
   const birthYears = useMemo(() => getBirthYearsDescending(), []);
 
@@ -114,6 +117,42 @@ export default function Profile() {
   const logout = () => {
     setAuth('', '', 'user', null, false);
     navigate('/login');
+  };
+
+  const submitSuggestion = async (e: { preventDefault: () => void }) => {
+    e.preventDefault();
+    setSuggestionOk(null);
+    const text = suggestionText.trim();
+    if (!token) {
+      navigate('/login');
+      return;
+    }
+    if (text.length < 10) {
+      alert('Escribe al menos 10 caracteres.');
+      return;
+    }
+    setSuggestionSending(true);
+    try {
+      const res = await fetch(apiUrl('/api/suggestions'), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message: text }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { detail?: unknown };
+      if (!res.ok) {
+        alert(typeof data.detail === 'string' ? data.detail : 'No se pudo enviar la sugerencia');
+        return;
+      }
+      setSuggestionText('');
+      setSuggestionOk('¡Gracias! Tu sugerencia llegó al equipo.');
+    } catch {
+      alert('Error de conexión al enviar');
+    } finally {
+      setSuggestionSending(false);
+    }
   };
 
   const applyMeToStore = (data: MeJson) => {
@@ -493,6 +532,46 @@ export default function Profile() {
                     </button>
                   </>
                 )}
+              </form>
+            )}
+
+            {token && (
+              <form
+                onSubmit={(e) => void submitSuggestion(e)}
+                className="bg-gray-950/40 border border-gray-800 rounded-2xl p-5 space-y-3"
+              >
+                <h3 className="text-sm font-bold text-white uppercase tracking-wide flex items-center gap-2">
+                  <MessageSquare size={16} className="text-cyan-400" />
+                  Buzón de sugerencias
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Ideas, mejoras o problemas. El equipo las revisa en el panel de administración.
+                </p>
+                <textarea
+                  value={suggestionText}
+                  onChange={(e) => setSuggestionText(e.target.value)}
+                  maxLength={2000}
+                  rows={4}
+                  placeholder="Cuéntanos qué te gustaría ver en Albedrío…"
+                  className="w-full rounded-xl bg-gray-950 border border-gray-700 px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none resize-y min-h-[96px]"
+                />
+                <div className="flex items-center justify-between gap-2 text-[11px] text-gray-600">
+                  <span>{suggestionText.trim().length}/2000</span>
+                  <span>Mínimo 10 caracteres</span>
+                </div>
+                {suggestionOk && (
+                  <p className="text-sm text-emerald-300 border border-emerald-900/50 bg-emerald-950/30 rounded-lg px-3 py-2">
+                    {suggestionOk}
+                  </p>
+                )}
+                <button
+                  type="submit"
+                  disabled={suggestionSending || suggestionText.trim().length < 10}
+                  className="w-full inline-flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-45 text-white font-semibold py-2.5 px-4 rounded-xl border border-gray-700 transition-colors"
+                >
+                  {suggestionSending ? <Loader2 className="animate-spin" size={18} /> : <MessageSquare size={18} />}
+                  Enviar sugerencia
+                </button>
               </form>
             )}
 

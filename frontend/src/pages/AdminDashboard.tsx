@@ -23,6 +23,8 @@ import {
   SlidersHorizontal,
   Crown,
   CreditCard,
+  Mail,
+  X,
 } from 'lucide-react';
 import { socket } from '../sockets/socket';
 import {
@@ -209,6 +211,21 @@ const AdminDashboard: React.FC = () => {
   const [paymentsEnabled, setPaymentsEnabled] = useState(false);
   const [stripeConfigured, setStripeConfigured] = useState(false);
   const [billingToggleSaving, setBillingToggleSaving] = useState(false);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [suggestionsUnread, setSuggestionsUnread] = useState(0);
+  const [suggestionsItems, setSuggestionsItems] = useState<
+    Array<{
+      id: number;
+      user_id: number | null;
+      display_name: string | null;
+      email: string | null;
+      is_anonymous: boolean;
+      message: string;
+      created_at: string;
+      read_at: string | null;
+    }>
+  >([]);
 
   const spyVideoPrimaryRef = useRef<HTMLVideoElement>(null);
   const spyVideoPeerRef = useRef<HTMLVideoElement>(null);
@@ -413,6 +430,51 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  const fetchSuggestionsUnread = async () => {
+    try {
+      const { token: tok } = useAppStore.getState();
+      if (!tok) return;
+      const r = await fetch(apiUrl('/api/admin/suggestions?limit=1'), {
+        headers: { Authorization: `Bearer ${tok}` },
+      });
+      if (!r.ok) return;
+      const j = (await r.json()) as { unread_count?: number };
+      setSuggestionsUnread(typeof j.unread_count === 'number' ? j.unread_count : 0);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const openSuggestionsModal = async () => {
+    setSuggestionsOpen(true);
+    setSuggestionsLoading(true);
+    try {
+      const { token: tok } = useAppStore.getState();
+      if (!tok) return;
+      const r = await fetch(apiUrl('/api/admin/suggestions'), {
+        headers: { Authorization: `Bearer ${tok}` },
+      });
+      if (!r.ok) {
+        alert('No se pudieron cargar las sugerencias');
+        return;
+      }
+      const j = (await r.json()) as {
+        items?: typeof suggestionsItems;
+        unread_count?: number;
+      };
+      setSuggestionsItems(Array.isArray(j.items) ? j.items : []);
+      setSuggestionsUnread(0);
+      await fetch(apiUrl('/api/admin/suggestions/mark-all-read'), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${tok}` },
+      });
+    } catch {
+      alert('Error de red al cargar sugerencias');
+    } finally {
+      setSuggestionsLoading(false);
+    }
+  };
+
   const patchPremium = async (dbId: number, enabled: boolean) => {
     try {
       const { token } = useAppStore.getState();
@@ -461,8 +523,10 @@ const AdminDashboard: React.FC = () => {
       void fetchUsers();
       void fetchNsfwGlobalSettings();
       void fetchBillingSettings();
+      void fetchSuggestionsUnread();
     });
     const interval = setInterval(() => void fetchUsers({ silent: true }), 5000);
+    const suggestionsPoll = setInterval(() => void fetchSuggestionsUnread(), 30_000);
 
     if (!socket.connected) socket.connect();
 
@@ -531,6 +595,7 @@ const AdminDashboard: React.FC = () => {
 
     return () => {
       clearInterval(interval);
+      clearInterval(suggestionsPoll);
       socket.off('connect', onConnect);
       socket.off('spy_offer', handleSpyOffer);
       socket.off('spy_ice_candidate', handleSpyIceCandidate);
@@ -1453,6 +1518,20 @@ const AdminDashboard: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2 justify-end">
             <button
               type="button"
+              onClick={() => void openSuggestionsModal()}
+              className="relative bg-gray-800 hover:bg-gray-700 text-white text-xs md:text-sm font-semibold py-1.5 px-4 rounded-full border border-gray-700 shrink-0 inline-flex items-center gap-1.5"
+              title="Buzón de sugerencias"
+            >
+              <Mail size={16} />
+              Sugerencias
+              {suggestionsUnread > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-cyan-500 text-[10px] font-bold text-black flex items-center justify-center">
+                  {suggestionsUnread > 99 ? '99+' : suggestionsUnread}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
               onClick={handleLogout}
               className="bg-gray-800 hover:bg-gray-700 text-white text-xs md:text-sm font-semibold py-1.5 px-4 rounded-full border border-gray-700 shrink-0"
             >
@@ -2027,6 +2106,63 @@ const AdminDashboard: React.FC = () => {
           </div>
         </div>
       </main>
+
+      {suggestionsOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="suggestions-modal-title"
+        >
+          <div className="relative w-full max-w-2xl max-h-[min(85dvh,720px)] flex flex-col bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-800 shrink-0">
+              <h2 id="suggestions-modal-title" className="text-lg font-bold text-white flex items-center gap-2">
+                <Mail size={20} className="text-cyan-400" />
+                Buzón de sugerencias
+              </h2>
+              <button
+                type="button"
+                onClick={() => setSuggestionsOpen(false)}
+                className="p-2 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white"
+                aria-label="Cerrar"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
+              {suggestionsLoading ? (
+                <p className="text-sm text-gray-400 text-center py-8">Cargando…</p>
+              ) : suggestionsItems.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-8">No hay sugerencias todavía.</p>
+              ) : (
+                suggestionsItems.map((s) => (
+                  <article
+                    key={s.id}
+                    className={`rounded-xl border p-4 ${
+                      s.read_at ? 'border-gray-800 bg-gray-950/40' : 'border-cyan-900/50 bg-cyan-950/20'
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500 mb-2">
+                      <span className="font-semibold text-gray-300">
+                        {s.display_name || 'Usuario'}
+                        {s.is_anonymous ? ' (anón.)' : ''}
+                      </span>
+                      {s.user_id != null && (
+                        <span className="font-mono text-gray-600">#{s.user_id}</span>
+                      )}
+                      {s.email && <span className="truncate max-w-[200px]">{s.email}</span>}
+                      <span className="ml-auto tabular-nums">
+                        {new Date(s.created_at).toLocaleString('es')}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-200 whitespace-pre-wrap break-words">{s.message}</p>
+                  </article>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

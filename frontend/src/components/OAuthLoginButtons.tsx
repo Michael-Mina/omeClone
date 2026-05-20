@@ -307,7 +307,7 @@ export function OAuthLoginButtons({
                 <div
                   ref={googleHiddenHostRef}
                   className={`absolute inset-0 z-10 flex min-h-[52px] w-full items-center justify-center opacity-0 [&_*]:max-w-none ${overlayBlocked ? 'pointer-events-none' : ''}`}
-                  aria-hidden
+                  aria-label="Continuar con Google"
                 />
               </div>
             ) : (
