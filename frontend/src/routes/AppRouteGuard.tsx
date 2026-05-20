@@ -2,7 +2,10 @@ import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import App from '../App';
 import { useAppStore } from '../store/useAppStore';
+import { apiUrl } from '../config/apiBase';
+import { socket } from '../sockets/socket';
 import { ensureValidAccessToken } from '../utils/authSession';
+import { meJsonToAccessBlock } from '../utils/salasAccessFromMe';
 
 /** Videollamadas: solo si ya eligió sala en `/salas`. */
 export function AppRouteGuard() {
@@ -17,6 +20,34 @@ export function AppRouteGuard() {
         return;
       }
       await ensureValidAccessToken();
+      if (cancelled) return;
+
+      const st = useAppStore.getState();
+      if (!st.token?.trim()) {
+        if (!cancelled) setSessionReady(true);
+        return;
+      }
+
+      /** Evita /app directo con `salaSessionActive` persistido si la cuenta ya está restringida. */
+      if (st.role !== 'superadmin' && st.salaSessionActive) {
+        try {
+          const fresh = (await ensureValidAccessToken()) ?? st.token;
+          const r = await fetch(apiUrl('/api/auth/me'), {
+            headers: { Authorization: `Bearer ${fresh}` },
+          });
+          if (r.ok && !cancelled) {
+            const j = (await r.json()) as Record<string, unknown>;
+            if (meJsonToAccessBlock(j).blocked) {
+              socket.emit('cancel_matchmaking', {});
+              useAppStore.getState().stopMatch();
+              useAppStore.getState().setSalaSessionActive(false);
+            }
+          }
+        } catch {
+          /* sin red: no forzar salida de /app */
+        }
+      }
+
       if (!cancelled) setSessionReady(true);
     })();
     return () => {

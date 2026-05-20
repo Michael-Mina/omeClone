@@ -19,6 +19,47 @@ from app.core.config import settings as app_settings
 router = APIRouter()
 
 
+def _later_iso_ban_until(a: object | None, b: object | None) -> str | None:
+    """Elige la fecha de fin de bloqueo IA más tardía (misma cuenta, varios sockets)."""
+    if a is None:
+        return str(b) if b is not None else None
+    if b is None:
+        return str(a)
+    try:
+        sa = str(a).strip().replace("Z", "+00:00")
+        sb = str(b).strip().replace("Z", "+00:00")
+        if " " in sa and "T" not in sa:
+            sa = sa.replace(" ", "T", 1)
+        if " " in sb and "T" not in sb:
+            sb = sb.replace(" ", "T", 1)
+        da = datetime.fromisoformat(sa)
+        db = datetime.fromisoformat(sb)
+        return a if da >= db else b  # type: ignore[return-value]
+    except Exception:
+        return a if a else b  # type: ignore[return-value]
+
+
+def _sanction_fields_from_user(u: User | None) -> dict:
+    """Campos de sanción para el listado admin (y sockets con fila en BD)."""
+    if u is None:
+        return {
+            "is_banned": False,
+            "nsfw_permanent_ban": False,
+            "nsfw_ban_until": None,
+        }
+    bu = getattr(u, "nsfw_ban_until", None)
+    bu_out: str | None = None
+    if bu is not None:
+        if getattr(bu, "tzinfo", None) is None:
+            bu = bu.replace(tzinfo=timezone.utc)
+        bu_out = bu.isoformat()
+    return {
+        "is_banned": bool(getattr(u, "is_banned", False)),
+        "nsfw_permanent_ban": bool(getattr(u, "nsfw_permanent_ban", False)),
+        "nsfw_ban_until": bu_out,
+    }
+
+
 def _presence_sort_key(row: dict):
     order = {"in_call": 0, "waiting": 1, "offline": 2}
     return (order.get(row.get("presence"), 9), (row.get("display_name") or "").lower())
@@ -59,6 +100,9 @@ def _pick_better_online_row(a: dict, b: dict) -> dict:
     merged["exempt_from_ai_censorship"] = bool(
         winner.get("exempt_from_ai_censorship") or other.get("exempt_from_ai_censorship")
     )
+    merged["is_banned"] = bool(winner.get("is_banned") or other.get("is_banned"))
+    merged["nsfw_permanent_ban"] = bool(winner.get("nsfw_permanent_ban") or other.get("nsfw_permanent_ban"))
+    merged["nsfw_ban_until"] = _later_iso_ban_until(winner.get("nsfw_ban_until"), other.get("nsfw_ban_until"))
     return merged
 
 
@@ -129,6 +173,7 @@ def get_dashboard_users(db: Session = Depends(get_db), current_user: User = Depe
 
         db_uid = candidate_db_uid if udb is not None else None
 
+        snap = _sanction_fields_from_user(udb)
         online_rows.append({
             "row_key": sid,
             "sid": sid,
@@ -149,6 +194,7 @@ def get_dashboard_users(db: Session = Depends(get_db), current_user: User = Depe
             "premium_source": premium_source,
             "match_room_id": room,
             "match_zone": info.get("match_zone") or "moderated",
+            **snap,
         })
 
     merged_by_db_id: dict[int, dict] = {}
@@ -174,27 +220,29 @@ def get_dashboard_users(db: Session = Depends(get_db), current_user: User = Depe
     for u in registered:
         if u.id in online_db_ids_seen:
             continue
+        snap = _sanction_fields_from_user(u)
         users_list.append({
-            "row_key": f"offline-{u.id}",
-            "sid": None,
-            "db_user_id": u.id,
-            "user_id": str(u.id),
-            "display_name": u.display_name or f"Usuario_{u.id}",
-            "role": "user",
-            "presence": "offline",
-            "is_anonymous": False,
-            "gender": u.gender,
-            "birth_year": u.birth_year,
-            "country": u.country,
-            "language": u.language,
-            "connected_to": None,
-            "exempt_from_ban": bool(getattr(u, "exempt_from_ban", False)),
-            "exempt_from_ai_censorship": bool(getattr(u, "exempt_from_ai_censorship", False)),
-            "is_premium": user_has_premium(u),
-            "premium_source": getattr(u, "premium_source", None),
-            "match_room_id": None,
-            "match_zone": None,
-        })
+                "row_key": f"offline-{u.id}",
+                "sid": None,
+                "db_user_id": u.id,
+                "user_id": str(u.id),
+                "display_name": u.display_name or f"Usuario_{u.id}",
+                "role": "user",
+                "presence": "offline",
+                "is_anonymous": False,
+                "gender": u.gender,
+                "birth_year": u.birth_year,
+                "country": u.country,
+                "language": u.language,
+                "connected_to": None,
+                "exempt_from_ban": bool(getattr(u, "exempt_from_ban", False)),
+                "exempt_from_ai_censorship": bool(getattr(u, "exempt_from_ai_censorship", False)),
+                "is_premium": user_has_premium(u),
+                "premium_source": getattr(u, "premium_source", None),
+                "match_room_id": None,
+                "match_zone": None,
+                **snap,
+            })
 
     users_list.sort(key=_presence_sort_key)
     return {"users": users_list}

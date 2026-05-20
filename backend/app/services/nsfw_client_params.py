@@ -39,13 +39,15 @@ def intensity_to_client_params(intensity: int | None) -> NsfwClientParamsDTO:
     - 50: encaja con valores históricos del repo (~0.6 umbral, 1.5s frame, streak ~10s).
     - 100: más estricto.
 
-    El cliente usa solo Porn + Hentai (no suma «Sexy») para reducir falsos positivos;
-    en modo permisivo se exigen más frames consecutivos antes de activar.
+    El cliente usa Porn + Hentai y «Sexy» ponderado (ver frontend); el umbral en i≈0
+    no debe pasarse de ~0.75 o casi no dispara ante contenido claro.
+    En modo permisivo se exigen más frames consecutivos antes de activar.
     """
     i = clamp_intensity(intensity)
     t = i / 100.0
 
-    threshold = round(0.82 - 0.44 * t, 4)
+    # Antes: 0.82 en i=0 (casi imposible superar con Porn+Hentai). Curva más usable.
+    threshold = round(0.74 - 0.36 * t, 4)
     frame_interval_ms = int(round(2000 - 1000 * t))
     frame_interval_ms = max(700, min(2800, frame_interval_ms))
 

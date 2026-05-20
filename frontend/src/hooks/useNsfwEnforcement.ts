@@ -114,26 +114,40 @@ export function useNsfwEnforcement(
   }, [platformSuspended]);
 
   const applyServerPayload = useCallback((data: NsfwPayload) => {
-    setStrikeCount(Math.max(0, Number(data.nsfw_strike_count) || 0));
-    const banIso = data.nsfw_ban_until;
-    const banMs = clampBanEndMs(banUntilToTimestampMs(banIso ?? null));
-    const active =
-      banMs != null && banMs > Date.now() ? banMs : null;
-    cooldownEndRef.current = active;
-    setCooldownEnd(active);
-    const nsfwPerm = !!(data.nsfw_permanent_ban);
-    const plat = !!(data.is_banned) && !nsfwPerm;
+    if ('nsfw_strike_count' in data) {
+      setStrikeCount(Math.max(0, Number(data.nsfw_strike_count) || 0));
+    }
+    // Solo tocar cooldown si el servidor envía la clave (evita borrar tras respuestas parciales).
+    if ('nsfw_ban_until' in data) {
+      const banIso = data.nsfw_ban_until;
+      const banMs = clampBanEndMs(banUntilToTimestampMs(banIso ?? null));
+      // Margen por desfase de reloj cliente/servidor al comparar con el fin del bloqueo.
+      const CLOCK_SKEW_MS = 15_000;
+      const active =
+        banMs != null && banMs > Date.now() - CLOCK_SKEW_MS ? banMs : null;
+      cooldownEndRef.current = active;
+      setCooldownEnd(active);
+    }
+    const nsfwPerm =
+      'nsfw_permanent_ban' in data
+        ? !!(data.nsfw_permanent_ban)
+        : nsfwPermanentRef.current;
+    const plat =
+      'is_banned' in data
+        ? !!(data.is_banned) && !nsfwPerm
+        : platformSuspendedRef.current;
     nsfwPermanentRef.current = nsfwPerm;
     platformSuspendedRef.current = plat;
     setNsfwPermanent(nsfwPerm);
     setPlatformSuspended(plat);
   }, []);
 
-  /** Sincroniza estado NSFW con el servidor (otro dispositivo / F5). Solo hace falta el token. */
+  /** Sincroniza estado NSFW con el servidor (otro dispositivo / F5 / volver a la pestaña). */
   useEffect(() => {
     if (exempt || !token) return;
     let cancelled = false;
-    (async () => {
+
+    const syncFromMe = async () => {
       try {
         const res = await fetch(apiUrl('/api/auth/me'), {
           headers: { Authorization: `Bearer ${token}` },
@@ -144,11 +158,22 @@ export function useNsfwEnforcement(
       } catch {
         /* red */
       }
-    })();
+    };
+
+    void syncFromMe();
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void syncFromMe();
+    };
+    window.addEventListener('pageshow', syncFromMe);
+    document.addEventListener('visibilitychange', onVisible);
+
     return () => {
       cancelled = true;
+      window.removeEventListener('pageshow', syncFromMe);
+      document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [exempt, token, applyServerPayload]);
+  }, [exempt, token, userId, applyServerPayload]);
 
   const prevUserIdRef = useRef<string | null>(null);
   useEffect(() => {

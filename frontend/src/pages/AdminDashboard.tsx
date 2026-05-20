@@ -28,6 +28,7 @@ import {
   Mail,
   X,
   Grid3X3,
+  Clock,
 } from 'lucide-react';
 import { socket } from '../sockets/socket';
 import {
@@ -81,6 +82,10 @@ interface DashboardUser {
   match_room_id?: string | null;
   /** Cola de matchmaking: moderated | adult (solo si está conectado). */
   match_zone?: string | null;
+  /** Desde BD vía /api/admin/dashboard-users */
+  is_banned?: boolean;
+  nsfw_permanent_ban?: boolean;
+  nsfw_ban_until?: string | null;
 }
 
 /** Clave estable para guardar favoritos (antes user_id||row_key fallaba con offline-* vs id). */
@@ -181,6 +186,77 @@ function adminMatchZoneBadge(u: DashboardUser): { text: string; title: string; c
   };
 }
 
+function parseNsfwBanUntilMs(iso: string | null | undefined): number | null {
+  if (iso == null || String(iso).trim() === '') return null;
+  let s = String(iso).trim();
+  if (!s.includes('T') && s.includes(' ')) s = s.replace(' ', 'T');
+  const hasTz = /Z$/i.test(s) || /[+-]\d{2}:\d{2}$/.test(s);
+  const ms = hasTz ? Date.parse(s) : Date.parse(s.replace(/\.\d+$/, '') + 'Z');
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/** Cuenta baneada por moderación o baneo permanente IA. */
+function isDashboardUserAccountBanned(u: DashboardUser): boolean {
+  return Boolean(u.nsfw_permanent_ban || u.is_banned);
+}
+
+/** Fin del bloqueo temporal IA (~2 min), si aplica y no hay baneo de cuenta. */
+function dashboardUserCooldownEndsAt(u: DashboardUser, nowMs: number): number | null {
+  if (u.nsfw_permanent_ban || u.is_banned) return null;
+  const t = parseNsfwBanUntilMs(u.nsfw_ban_until ?? null);
+  if (t == null || t <= nowMs + 1500) return null;
+  return t;
+}
+
+function formatSanctionCountdown(totalSec: number): string {
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function renderDashboardSanctions(user: DashboardUser, nowMs: number): React.ReactNode {
+  const accountBanned = isDashboardUserAccountBanned(user);
+  const coolEnd = dashboardUserCooldownEndsAt(user, nowMs);
+  const showCooldown = coolEnd != null;
+
+  if (!accountBanned && !showCooldown) {
+    if (user.exempt_from_ban) {
+      return <span className="text-[10px] text-gray-600">Exento ban</span>;
+    }
+    return <span className="text-gray-600">—</span>;
+  }
+
+  return (
+    <div className="flex flex-col gap-1 items-start max-w-[140px]">
+      {accountBanned &&
+        (user.nsfw_permanent_ban ? (
+          <span
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-red-950/90 text-red-200 ring-1 ring-red-700/50"
+            title="Baneo permanente por políticas de contenido (IA)"
+          >
+            Baneo IA
+          </span>
+        ) : (
+          <span
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-950/90 text-amber-200 ring-1 ring-amber-700/50"
+            title="Cuenta suspendida por moderación"
+          >
+            Moderación
+          </span>
+        ))}
+      {showCooldown && (
+        <span
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-orange-950/90 text-orange-200 ring-1 ring-orange-700/50"
+          title="Bloqueo temporal (~2 min) por detección de contenido"
+        >
+          <Clock size={11} className="shrink-0 opacity-90" strokeWidth={2.25} />
+          {formatSanctionCountdown(Math.max(0, Math.ceil((coolEnd - nowMs) / 1000)))}
+        </span>
+      )}
+    </div>
+  );
+}
+
 const AdminDashboard: React.FC = () => {
   const { setAuth, userId, language, token, displayName, role } = useAppStore();
   const navigate = useNavigate();
@@ -204,9 +280,11 @@ const AdminDashboard: React.FC = () => {
   const [filterPresence, setFilterPresence] = useState('');
   const [filterMatchZone, setFilterMatchZone] = useState('');
   const [filterAnonType, setFilterAnonType] = useState('');
+  const [filterSanction, setFilterSanction] = useState('');
   const [filterAgeMin, setFilterAgeMin] = useState('');
   const [filterAgeMax, setFilterAgeMax] = useState('');
   const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [adminSanctionNow, setAdminSanctionNow] = useState(() => Date.now());
   const [adminListError, setAdminListError] = useState<string | null>(null);
   const [userListPage, setUserListPage] = useState(1);
   const [nsfwGlobalSnapshot, setNsfwGlobalSnapshot] = useState<PublicNsfwDetectionSettings | null>(null);
@@ -762,9 +840,15 @@ const AdminDashboard: React.FC = () => {
     filterPresence,
     filterMatchZone,
     filterAnonType,
+    filterSanction,
     filterAgeMin,
     filterAgeMax,
   ]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setAdminSanctionNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (!isRecording) {
@@ -980,6 +1064,7 @@ const AdminDashboard: React.FC = () => {
     setFilterPresence('');
     setFilterMatchZone('');
     setFilterAnonType('');
+    setFilterSanction('');
     setFilterAgeMin('');
     setFilterAgeMax('');
     setSearchQuery('');
@@ -993,6 +1078,7 @@ const AdminDashboard: React.FC = () => {
     if (filterPresence) n++;
     if (filterMatchZone) n++;
     if (filterAnonType) n++;
+    if (filterSanction) n++;
     if (filterAgeMin.trim()) n++;
     if (filterAgeMax.trim()) n++;
     return n;
@@ -1003,6 +1089,7 @@ const AdminDashboard: React.FC = () => {
     filterPresence,
     filterMatchZone,
     filterAnonType,
+    filterSanction,
     filterAgeMin,
     filterAgeMax,
   ]);
@@ -1046,6 +1133,10 @@ const AdminDashboard: React.FC = () => {
 
     if (filterAnonType === 'anon' && !u.is_anonymous) return false;
     if (filterAnonType === 'registered' && u.is_anonymous) return false;
+
+    if (filterSanction === 'banned' && !isDashboardUserAccountBanned(u)) return false;
+    if (filterSanction === 'cooldown' && dashboardUserCooldownEndsAt(u, adminSanctionNow) == null)
+      return false;
 
     const age = approxAge(u.birth_year);
     if (filterAgeMin) {
@@ -1171,6 +1262,8 @@ const AdminDashboard: React.FC = () => {
             {zoneBadge.text}
           </span>
         </td>
+
+        <td className="px-3 py-3 align-top">{renderDashboardSanctions(user, adminSanctionNow)}</td>
 
         <td className="px-3 py-3 text-xs text-gray-300 max-w-[100px]" title={genderLabel(user.gender)}>
           {genderLabel(user.gender)}
@@ -1379,6 +1472,11 @@ const AdminDashboard: React.FC = () => {
               {isFav && <span className="text-amber-500 font-bold">★</span>}
             </div>
           </div>
+        </div>
+
+        <div className="px-2.5 py-1.5 border-b border-gray-800/60 bg-black/20">
+          <span className="text-[8px] text-gray-600 uppercase tracking-wide">Sanción</span>
+          <div className="mt-0.5">{renderDashboardSanctions(user, adminSanctionNow)}</div>
         </div>
 
         <div className="grid grid-cols-4 gap-x-2 gap-y-1 px-2.5 pb-1.5 text-[9px] border-t border-gray-800/70 pt-1.5">
@@ -1764,6 +1862,15 @@ const AdminDashboard: React.FC = () => {
                 <option value="anon">Solo anónimos</option>
                 <option value="registered">Solo registrados</option>
               </select>
+              <select
+                value={filterSanction}
+                onChange={(e) => setFilterSanction(e.target.value)}
+                className={`${selectCls} sm:max-w-[11rem]`}
+              >
+                <option value="">Sanción</option>
+                <option value="banned">Baneados / suspendidos</option>
+                <option value="cooldown">Bloqueo temporal (~2 min IA)</option>
+              </select>
               <input
                 type="number"
                 min={13}
@@ -1862,6 +1969,7 @@ const AdminDashboard: React.FC = () => {
                     <th className="px-3 py-3 font-semibold">Rol</th>
                     <th className="px-3 py-3 font-semibold">Estado</th>
                     <th className="px-3 py-3 font-semibold">Sala</th>
+                    <th className="px-3 py-3 font-semibold whitespace-nowrap">Sanción</th>
                     <th className="px-3 py-3 font-semibold">Género</th>
                     <th className="px-3 py-3 font-semibold">Edad</th>
                     <th className="px-3 py-3 font-semibold">País</th>

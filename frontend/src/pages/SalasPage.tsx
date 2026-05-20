@@ -1,14 +1,23 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Flame, ShieldCheck, User, Video, ArrowRight, Crown } from 'lucide-react';
+import { Flame, ShieldAlert, ShieldCheck, User, Video, ArrowRight, Crown, Clock } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { socket } from '../sockets/socket';
 import type { MatchZone } from '../types/matchZone';
 import { MATCH_ZONE_META, getAdultZoneDisplay, userMeetsAdultZone } from '../types/matchZone';
 import { adultZoneBlockedHint, getLegalAdultAge } from '../data/legalAdultAge';
 import { AdultZoneConsentModal } from '../components/AdultZoneConsentModal';
+import { apiUrl } from '../config/apiBase';
+import { ensureValidAccessToken } from '../utils/authSession';
+import { meJsonToAccessBlock, type SalasAccessBlock } from '../utils/salasAccessFromMe';
 
 const ZONES: MatchZone[] = ['moderated', 'adult'];
+
+function formatMmSs(totalSec: number): string {
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
 
 export default function SalasPage() {
   const navigate = useNavigate();
@@ -22,13 +31,59 @@ export default function SalasPage() {
     isPremium,
     birthYear,
     country,
+    token,
+    role,
   } = useAppStore();
 
   const [picked, setPicked] = useState<MatchZone>(matchZone);
   const [consentOpen, setConsentOpen] = useState(false);
+  const [access, setAccess] = useState<SalasAccessBlock>({ blocked: false });
+  const [cooldownLeftSec, setCooldownLeftSec] = useState<number | null>(null);
   const adultDisplay = getAdultZoneDisplay(country);
   const canAdult = userMeetsAdultZone(birthYear, country);
   const minAdultAge = getLegalAdultAge(country);
+
+  useEffect(() => {
+    if (role === 'superadmin') {
+      setAccess({ blocked: false });
+      return;
+    }
+    const tok = token?.trim();
+    if (!tok) {
+      setAccess({ blocked: false });
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const fresh = (await ensureValidAccessToken()) ?? tok;
+        const r = await fetch(apiUrl('/api/auth/me'), { headers: { Authorization: `Bearer ${fresh}` } });
+        if (!r.ok || cancelled) return;
+        const j = (await r.json()) as Record<string, unknown>;
+        if (cancelled) return;
+        setAccess(meJsonToAccessBlock(j));
+      } catch {
+        /* noop */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, role]);
+
+  useEffect(() => {
+    if (!access.blocked || access.kind !== 'cooldown' || access.untilMs == null) {
+      setCooldownLeftSec(null);
+      return;
+    }
+    const tick = () => {
+      const sec = Math.max(0, Math.ceil((access.untilMs! - Date.now()) / 1000));
+      setCooldownLeftSec(sec);
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [access]);
 
   useEffect(() => {
     setSalaSessionActive(false);
@@ -99,24 +154,58 @@ export default function SalasPage() {
       </header>
 
       <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 pb-8 md:pb-12 max-w-5xl mx-auto w-full">
-        <p className="text-center text-gray-300 text-base md:text-lg mb-8 max-w-xl leading-relaxed">
-          Solo te emparejaremos con personas que estén en la{' '}
-          <span className="text-white font-semibold">misma sala</span> que elijas.
-        </p>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 w-full">
-          {ZONES.map((zone) => {
-            const meta = zone === 'adult' ? adultDisplay : MATCH_ZONE_META[zone];
-            const selected = picked === zone;
-            const disabled = zone === 'adult' && !canAdult;
-            const Icon = zone === 'moderated' ? ShieldCheck : Flame;
-
-            return (
+        {access.blocked ? (
+          <div className="w-full max-w-lg rounded-3xl border border-red-900/60 bg-red-950/40 p-6 md:p-8 text-center shadow-xl shadow-black/40">
+            <ShieldAlert className="mx-auto mb-4 text-red-400" size={40} strokeWidth={1.75} />
+            <h2 className="text-lg md:text-xl font-bold text-white mb-2">
+              {access.kind === 'permanent' && 'Cuenta restringida'}
+              {access.kind === 'moderation' && 'Cuenta suspendida'}
+              {access.kind === 'cooldown' && 'Acceso a salas temporalmente bloqueado'}
+            </h2>
+            <p className="text-sm text-red-100/85 leading-relaxed mb-4">
+              {access.kind === 'permanent' &&
+                'Tu cuenta tiene una restricción permanente por infracciones repetidas de contenido. No puedes unirte a salas de videollamadas.'}
+              {access.kind === 'moderation' &&
+                'Tu cuenta fue suspendida por moderación. No puedes elegir sala ni emparejarte mientras siga activa la suspensión.'}
+              {access.kind === 'cooldown' &&
+                'Debes esperar a que termine el bloqueo automático por políticas de contenido en la sala estándar antes de volver a unirte.'}
+            </p>
+            {access.kind === 'cooldown' && cooldownLeftSec != null && cooldownLeftSec > 0 && (
+              <p className="inline-flex items-center justify-center gap-2 rounded-xl bg-black/35 px-4 py-2 font-mono text-2xl font-black text-orange-200 tabular-nums">
+                <Clock size={22} className="text-orange-300 shrink-0" />
+                {formatMmSs(cooldownLeftSec)}
+              </p>
+            )}
+            <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
               <button
-                key={zone}
                 type="button"
-                disabled={disabled}
-                onClick={() => setPicked(zone)}
+                onClick={() => navigate('/profile')}
+                className="px-5 py-3 rounded-xl font-semibold bg-gray-800 border border-gray-600 text-white hover:bg-gray-700"
+              >
+                Ir a mi perfil
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <p className="text-center text-gray-300 text-base md:text-lg mb-8 max-w-xl leading-relaxed">
+              Solo te emparejaremos con personas que estén en la{' '}
+              <span className="text-white font-semibold">misma sala</span> que elijas.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 w-full">
+              {ZONES.map((zone) => {
+                const meta = zone === 'adult' ? adultDisplay : MATCH_ZONE_META[zone];
+                const selected = picked === zone;
+                const disabled = zone === 'adult' && !canAdult;
+                const Icon = zone === 'moderated' ? ShieldCheck : Flame;
+
+                return (
+                  <button
+                    key={zone}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => setPicked(zone)}
                 className={`group relative text-left rounded-3xl border-2 p-6 md:p-8 transition-all duration-200 min-h-[220px] md:min-h-[260px] flex flex-col ${
                   selected
                     ? `border-transparent bg-gradient-to-br ${meta.accent} shadow-2xl shadow-black/40 scale-[1.02] ring-2 ring-white/25`
@@ -162,26 +251,28 @@ export default function SalasPage() {
                     Seleccionada <ArrowRight size={14} />
                   </span>
                 )}
-              </button>
-            );
-          })}
-        </div>
+                  </button>
+                );
+              })}
+            </div>
 
-        {!canAdult && (
-          <p className="mt-4 text-sm text-amber-400/90 text-center max-w-md">
-            {adultZoneBlockedHint(country)}
-          </p>
+            {!canAdult && (
+              <p className="mt-4 text-sm text-amber-400/90 text-center max-w-md">
+                {adultZoneBlockedHint(country)}
+              </p>
+            )}
+
+            <button
+              type="button"
+              onClick={enterSala}
+              disabled={picked === 'adult' && !canAdult}
+              className="mt-8 md:mt-10 w-full max-w-md py-4 px-6 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-xl shadow-green-900/30 transition-all hover:scale-[1.02] active:scale-[0.98]"
+            >
+              <Video size={22} />
+              Entrar a {picked === 'adult' ? adultDisplay.label : MATCH_ZONE_META[picked].label}
+            </button>
+          </>
         )}
-
-        <button
-          type="button"
-          onClick={enterSala}
-          disabled={picked === 'adult' && !canAdult}
-          className="mt-8 md:mt-10 w-full max-w-md py-4 px-6 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-xl shadow-green-900/30 transition-all hover:scale-[1.02] active:scale-[0.98]"
-        >
-          <Video size={22} />
-          Entrar a {picked === 'adult' ? adultDisplay.label : MATCH_ZONE_META[picked].label}
-        </button>
       </main>
 
       <AdultZoneConsentModal

@@ -66,18 +66,23 @@ export const useNSFWDetection = (
   }, [rt.probabilityThreshold, rt.lowFramesToClear, needHigh, rt.frameIntervalMs]);
 
   useEffect(() => {
+    if (skipModel) return;
 
     const detect = async () => {
+      if (!modelRef.current) return;
       if (videoRef.current && videoRef.current.readyState === 4) { // HAVE_ENOUGH_DATA
         try {
-          const predictions = await modelRef.current!.classify(videoRef.current);
-          
-          // Solo Porn + Hentai: «Sexy» dispara muchísimos falsos positivos (piel, ropa normal, pose).
+          const predictions = await modelRef.current.classify(videoRef.current);
+
           const byClass = Object.fromEntries(predictions.map((p) => [p.className, p.probability])) as Record<
             string,
             number
           >;
-          const nsfwProbability = (byClass.Porn ?? 0) + (byClass.Hentai ?? 0);
+          const p = byClass.Porn ?? 0;
+          const h = byClass.Hentai ?? 0;
+          const sx = byClass.Sexy ?? 0;
+          // Porn+Hentai como señal fuerte; Sexy aporta ante contenido sugerente sin sumar igual que Porn.
+          const nsfwProbability = Math.min(1, p + h + 0.4 * sx);
 
           if (nsfwProbability > rt.probabilityThreshold) {
             consecutiveLowRef.current = 0;
