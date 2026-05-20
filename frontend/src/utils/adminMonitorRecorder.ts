@@ -130,3 +130,103 @@ export function startMonitorRecording(opts: MonitorRecorderOptions): { stop: Mon
     },
   };
 }
+
+export type MonitorWallGridRecorderOptions = {
+  slotCount: number;
+  cols?: number;
+  getVideoAtSlot: (index: number) => HTMLVideoElement | null;
+  isAudioAtSlot?: (index: number) => boolean;
+  fps?: number;
+};
+
+/** Graba el muro 4×4 (o N celdas) en un solo vídeo. */
+export function startMonitorWallGridRecording(
+  opts: MonitorWallGridRecorderOptions
+): { stop: MonitorRecorderStop } {
+  const fps = opts.fps ?? 24;
+  const cols = opts.cols ?? 4;
+  const rows = Math.ceil(opts.slotCount / cols);
+  const W = 1280;
+  const H = 720;
+  const cellW = W / cols;
+  const cellH = H / rows;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('No se pudo crear contexto 2D');
+
+  let rafId = 0;
+  const draw = () => {
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < opts.slotCount; i++) {
+      const v = opts.getVideoAtSlot(i);
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = col * cellW;
+      const y = row * cellH;
+      try {
+        if (v && v.readyState >= 2) {
+          ctx.drawImage(v, x, y, cellW, cellH);
+        } else {
+          ctx.fillStyle = '#111827';
+          ctx.fillRect(x, y, cellW, cellH);
+          ctx.fillStyle = '#4b5563';
+          ctx.font = '14px sans-serif';
+          ctx.fillText(String(i + 1), x + 8, y + 22);
+        }
+      } catch {
+        /* frame no listo */
+      }
+    }
+    rafId = requestAnimationFrame(draw);
+  };
+  rafId = requestAnimationFrame(draw);
+
+  const { mimeType, extension } = pickRecorderMimeType();
+  const canvasStream = canvas.captureStream(fps);
+  for (let i = 0; i < opts.slotCount; i++) {
+    if (opts.isAudioAtSlot?.(i)) {
+      attachAudioTracksFromVideo(canvasStream, opts.getVideoAtSlot(i));
+    }
+  }
+
+  const chunks: BlobPart[] = [];
+  const rec = new MediaRecorder(canvasStream, {
+    mimeType,
+    videoBitsPerSecond: 2_500_000,
+  });
+  rec.ondataavailable = (e) => {
+    if (e.data.size > 0) chunks.push(e.data);
+  };
+  const stopPromise = new Promise<void>((resolve) => {
+    rec.onstop = () => resolve();
+  });
+  rec.start(250);
+  const baseType = mimeType.split(';')[0].trim() || (extension === 'mp4' ? 'video/mp4' : 'video/webm');
+
+  return {
+    async stop() {
+      cancelAnimationFrame(rafId);
+      if (rec.state === 'recording') {
+        try {
+          rec.requestData();
+        } catch {
+          /* ignore */
+        }
+        rec.stop();
+      }
+      await stopPromise;
+      const blob = new Blob(chunks, { type: baseType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      a.download = `albedrio-muro-${stamp}.${extension}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    },
+  };
+}

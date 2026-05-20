@@ -6,6 +6,7 @@ import SalasPage from './pages/SalasPage';
 import { AppRouteGuard } from './routes/AppRouteGuard';
 import Register from './pages/Register';
 import AdminDashboard from './pages/AdminDashboard';
+import AdminMonitorWall from './pages/AdminMonitorWall';
 import Profile from './pages/Profile';
 import PremiumPage from './pages/PremiumPage';
 import { useAppStore } from './store/useAppStore';
@@ -82,6 +83,16 @@ export const Router = () => {
             element={
               token && role === 'superadmin' ? (
                 <AdminDashboard />
+              ) : (
+                <Navigate to={!token ? '/login' : '/salas'} replace />
+              )
+            }
+          />
+          <Route
+            path="/admin/monitors"
+            element={
+              token && role === 'superadmin' ? (
+                <AdminMonitorWall />
               ) : (
                 <Navigate to={!token ? '/login' : '/salas'} replace />
               )

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   ShieldCheck,
   ShieldBan,
@@ -20,11 +20,14 @@ import {
   Circle,
   Square,
   MessageSquare,
+  Volume2,
+  VolumeX,
   SlidersHorizontal,
   Crown,
   CreditCard,
   Mail,
   X,
+  Grid3X3,
 } from 'lucide-react';
 import { socket } from '../sockets/socket';
 import {
@@ -48,6 +51,7 @@ import {
 import { useChatTranslateMode } from '../hooks/useChatTranslateMode';
 import { MD_UP_MQ, useMdUp } from '../hooks/useMdUp';
 import { getAdultZoneDisplay } from '../types/matchZone';
+import { tryLockScreenLandscape, tryUnlockScreenOrientation } from '../utils/screenOrientation';
 
 interface ConnectedPeer {
   sid: string;
@@ -229,6 +233,10 @@ const AdminDashboard: React.FC = () => {
 
   const spyVideoPrimaryRef = useRef<HTMLVideoElement>(null);
   const spyVideoPeerRef = useRef<HTMLVideoElement>(null);
+  const spyAudioPrimaryRef = useRef<HTMLAudioElement>(null);
+  const spyAudioPeerRef = useRef<HTMLAudioElement>(null);
+  const [spyAudioOn, setSpyAudioOn] = useState(true);
+  const [spyStreamTick, setSpyStreamTick] = useState(0);
   /** Una RTCPeerConnection por usuario espiado (clave = sid del objetivo). */
   const spyPcsRef = useRef<Record<string, RTCPeerConnection>>({});
   const spyPrimarySidRef = useRef<string | null>(null);
@@ -578,6 +586,7 @@ const AdminDashboard: React.FC = () => {
         } else if (spyVideoPeerRef.current && !spyVideoPeerRef.current.srcObject) {
           spyVideoPeerRef.current.srcObject = stream;
         }
+        setSpyStreamTick((t) => t + 1);
       };
       await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
       const answer = await pc.createAnswer();
@@ -650,6 +659,38 @@ const AdminDashboard: React.FC = () => {
   }, [spyTarget, spyPeerSid, users]);
 
   useEffect(() => {
+    const ap = spyAudioPrimaryRef.current;
+    const ape = spyAudioPeerRef.current;
+    const pStream = spyVideoPrimaryRef.current?.srcObject ?? null;
+    const peerStream = spyVideoPeerRef.current?.srcObject ?? null;
+    if (!spyAudioOn) {
+      if (ap) {
+        ap.pause();
+        ap.srcObject = null;
+      }
+      if (ape) {
+        ape.pause();
+        ape.srcObject = null;
+      }
+      return;
+    }
+    if (ap && pStream) {
+      ap.srcObject = pStream;
+      void ap.play().catch(() => {});
+    } else if (ap) {
+      ap.pause();
+      ap.srcObject = null;
+    }
+    if (ape && peerStream) {
+      ape.srcObject = peerStream;
+      void ape.play().catch(() => {});
+    } else if (ape) {
+      ape.pause();
+      ape.srcObject = null;
+    }
+  }, [spyAudioOn, spyTarget, spyPeerSid, spyStreamTick]);
+
+  useEffect(() => {
     return () => {
       if (socket.connected) socket.emit('admin_spy_watch', { targets: [], room_ids: [] });
     };
@@ -703,22 +744,12 @@ const AdminDashboard: React.FC = () => {
     const onFs = () => {
       const active = !!document.fullscreenElement;
       setMonitorFullscreen(active);
-      if (!active) {
-        try {
-          screen.orientation?.unlock?.();
-        } catch {
-          /* sin API o ya desbloqueado */
-        }
-      }
+      if (!active) tryUnlockScreenOrientation();
     };
     document.addEventListener('fullscreenchange', onFs);
     return () => {
       document.removeEventListener('fullscreenchange', onFs);
-      try {
-        screen.orientation?.unlock?.();
-      } catch {
-        /* noop */
-      }
+      tryUnlockScreenOrientation();
     };
   }, []);
 
@@ -908,20 +939,7 @@ const AdminDashboard: React.FC = () => {
         await el.requestFullscreen();
         const mobileForFs =
           typeof window !== 'undefined' && !window.matchMedia(MD_UP_MQ).matches;
-        if (mobileForFs) {
-          const o = screen.orientation;
-          if (o && typeof o.lock === 'function') {
-            try {
-              await o.lock('landscape-primary');
-            } catch {
-              try {
-                await o.lock('landscape');
-              } catch {
-                /* Safari iOS u otros: sin lock; el panel sigue en pantalla completa */
-              }
-            }
-          }
-        }
+        if (mobileForFs) await tryLockScreenLandscape();
       } else {
         await document.exitFullscreen();
       }
@@ -1516,6 +1534,14 @@ const AdminDashboard: React.FC = () => {
             </h1>
           </div>
           <div className="flex flex-wrap items-center gap-2 justify-end">
+            <Link
+              to="/admin/monitors"
+              className="bg-gray-800 hover:bg-gray-700 text-white text-xs md:text-sm font-semibold py-1.5 px-4 rounded-full border border-gray-700 shrink-0 inline-flex items-center gap-1.5"
+              title="Muro de monitores CCTV"
+            >
+              <Grid3X3 size={16} className="text-cyan-400" />
+              Monitores
+            </Link>
             <button
               type="button"
               onClick={() => void openSuggestionsModal()}
@@ -1946,6 +1972,18 @@ const AdminDashboard: React.FC = () => {
             <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
               {spyTarget && (
                 <>
+                  <button
+                    type="button"
+                    onClick={() => setSpyAudioOn((v) => !v)}
+                    title={spyAudioOn ? 'Silenciar audio del monitor' : 'Escuchar audio'}
+                    className={`p-2 rounded-lg transition-colors ${
+                      spyAudioOn
+                        ? 'text-emerald-400 bg-emerald-950/50 hover:bg-emerald-900/40'
+                        : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                    }`}
+                  >
+                    {spyAudioOn ? <Volume2 size={20} /> : <VolumeX size={20} />}
+                  </button>
                   {!isRecording ? (
                     <button
                       type="button"
@@ -2001,6 +2039,8 @@ const AdminDashboard: React.FC = () => {
               )}
             </div>
           </div>
+          <audio ref={spyAudioPrimaryRef} className="hidden" />
+          <audio ref={spyAudioPeerRef} className="hidden" />
           <div className="flex flex-col flex-1 min-h-0 min-w-0">
             <div
               className={`flex-1 bg-black grid min-h-0 min-w-0 ${
