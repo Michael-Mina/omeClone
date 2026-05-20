@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
-import { User, LogOut, LogIn, ShieldCheck, Loader2, Crown, MessageSquare } from 'lucide-react';
+import { User, LogOut, LogIn, ShieldCheck, Loader2, Crown, MessageSquare, X } from 'lucide-react';
 import {
   GENDER_OPTIONS,
   COUNTRY_OPTIONS,
@@ -56,6 +56,7 @@ export default function Profile() {
   const [saveOk, setSaveOk] = useState<string | null>(null);
   /** Valores tal como vienen del servidor; solo se comparan al guardar para armar un PATCH parcial. */
   const [baseline, setBaseline] = useState<ProfileBaseline | null>(null);
+  const [suggestionModalOpen, setSuggestionModalOpen] = useState(false);
   const [suggestionText, setSuggestionText] = useState('');
   const [suggestionSending, setSuggestionSending] = useState(false);
   const [suggestionOk, setSuggestionOk] = useState<string | null>(null);
@@ -148,6 +149,10 @@ export default function Profile() {
       }
       setSuggestionText('');
       setSuggestionOk('¡Gracias! Tu sugerencia llegó al equipo.');
+      window.setTimeout(() => {
+        setSuggestionModalOpen(false);
+        setSuggestionOk(null);
+      }, 1800);
     } catch {
       alert('Error de conexión al enviar');
     } finally {
@@ -536,43 +541,17 @@ export default function Profile() {
             )}
 
             {token && (
-              <form
-                onSubmit={(e) => void submitSuggestion(e)}
-                className="bg-gray-950/40 border border-gray-800 rounded-2xl p-5 space-y-3"
+              <button
+                type="button"
+                onClick={() => {
+                  setSuggestionOk(null);
+                  setSuggestionModalOpen(true);
+                }}
+                className="w-full inline-flex items-center justify-center gap-2 bg-gray-950/40 hover:bg-gray-800/80 border border-gray-800 text-gray-200 font-semibold py-3 px-4 rounded-xl transition-colors"
               >
-                <h3 className="text-sm font-bold text-white uppercase tracking-wide flex items-center gap-2">
-                  <MessageSquare size={16} className="text-cyan-400" />
-                  Buzón de sugerencias
-                </h3>
-                <p className="text-xs text-gray-500">
-                  Ideas, mejoras o problemas. El equipo las revisa en el panel de administración.
-                </p>
-                <textarea
-                  value={suggestionText}
-                  onChange={(e) => setSuggestionText(e.target.value)}
-                  maxLength={2000}
-                  rows={4}
-                  placeholder="Cuéntanos qué te gustaría ver en Albedrío…"
-                  className="w-full rounded-xl bg-gray-950 border border-gray-700 px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none resize-y min-h-[96px]"
-                />
-                <div className="flex items-center justify-between gap-2 text-[11px] text-gray-600">
-                  <span>{suggestionText.trim().length}/2000</span>
-                  <span>Mínimo 10 caracteres</span>
-                </div>
-                {suggestionOk && (
-                  <p className="text-sm text-emerald-300 border border-emerald-900/50 bg-emerald-950/30 rounded-lg px-3 py-2">
-                    {suggestionOk}
-                  </p>
-                )}
-                <button
-                  type="submit"
-                  disabled={suggestionSending || suggestionText.trim().length < 10}
-                  className="w-full inline-flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-45 text-white font-semibold py-2.5 px-4 rounded-xl border border-gray-700 transition-colors"
-                >
-                  {suggestionSending ? <Loader2 className="animate-spin" size={18} /> : <MessageSquare size={18} />}
-                  Enviar sugerencia
-                </button>
-              </form>
+                <MessageSquare size={18} className="text-cyan-400" />
+                Buzón de sugerencias
+              </button>
             )}
 
             <button
@@ -584,6 +563,78 @@ export default function Profile() {
           </div>
         </div>
       </div>
+
+      {suggestionModalOpen && token && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="suggestion-modal-title"
+          onClick={() => !suggestionSending && setSuggestionModalOpen(false)}
+        >
+          <div
+            className="relative w-full max-w-lg bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-6 md:p-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => !suggestionSending && setSuggestionModalOpen(false)}
+              className="absolute top-4 right-4 p-2 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white"
+              aria-label="Cerrar"
+            >
+              <X size={20} />
+            </button>
+            <h3
+              id="suggestion-modal-title"
+              className="text-xl font-bold text-white pr-10 flex items-center gap-2"
+            >
+              <MessageSquare size={22} className="text-cyan-400 shrink-0" />
+              Buzón de sugerencias
+            </h3>
+            <p className="text-sm text-gray-400 mt-1 mb-5">
+              Ideas, mejoras o problemas. El equipo las revisa en el panel de administración.
+            </p>
+            <form onSubmit={(e) => void submitSuggestion(e)} className="space-y-4">
+              <textarea
+                value={suggestionText}
+                onChange={(e) => setSuggestionText(e.target.value)}
+                maxLength={2000}
+                rows={5}
+                autoFocus
+                placeholder="Cuéntanos qué te gustaría ver en Albedrío…"
+                className="w-full rounded-xl bg-gray-950 border border-gray-800 text-white px-4 py-3 focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-y min-h-[120px]"
+              />
+              <div className="flex items-center justify-between gap-2 text-[11px] text-gray-600">
+                <span>{suggestionText.trim().length}/2000</span>
+                <span>Mínimo 10 caracteres</span>
+              </div>
+              {suggestionOk && (
+                <p className="text-sm text-emerald-300 border border-emerald-900/50 bg-emerald-950/30 rounded-lg px-3 py-2">
+                  {suggestionOk}
+                </p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSuggestionModalOpen(false)}
+                  disabled={suggestionSending}
+                  className="flex-1 py-3 rounded-xl border border-gray-700 text-gray-300 font-semibold hover:bg-gray-800 disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={suggestionSending || suggestionText.trim().length < 10}
+                  className="flex-1 inline-flex items-center justify-center gap-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-50 text-white font-bold py-3 rounded-xl"
+                >
+                  {suggestionSending ? <Loader2 className="animate-spin" size={18} /> : <MessageSquare size={18} />}
+                  Enviar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
