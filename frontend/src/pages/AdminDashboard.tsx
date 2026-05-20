@@ -523,7 +523,7 @@ const AdminDashboard: React.FC = () => {
       'Filtro IA global (NSFW): afecta a todos los que usan el modelo local; exentos / superadmin no cargan modelo. Izquierda = permisivo, derecha = estricto.';
     if (!nsfwGlobalSnapshot) return intro;
     const s = nsfwGlobalSnapshot;
-    return `${intro} Valores guardados: umbral ${s.probability_threshold}, frame ${s.frame_interval_ms}ms, racha ${Math.round(s.streak_ms / 1000)}s, tolerancia ${s.grace_false_ms}ms, limpiar tras ${s.low_frames_to_clear} frames.`;
+    return `${intro} Valores guardados: umbral ${s.probability_threshold}, frame ${s.frame_interval_ms}ms, confirmar ${s.consecutive_frames_to_trigger ?? 2} frames, limpiar tras ${s.low_frames_to_clear} frames, racha ${Math.round(s.streak_ms / 1000)}s, tolerancia ${s.grace_false_ms}ms.`;
   }, [nsfwGlobalSnapshot]);
 
   useEffect(() => {

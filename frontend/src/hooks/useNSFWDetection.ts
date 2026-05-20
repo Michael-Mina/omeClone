@@ -7,12 +7,14 @@ export const DEFAULT_NSFW_DETECTION_RUNTIME = {
   probabilityThreshold: 0.6,
   frameIntervalMs: 1500,
   lowFramesToClear: 2,
+  consecutiveFramesToTrigger: 2,
 } as const;
 
 export type NsfwDetectionRuntimeConfig = {
   probabilityThreshold: number;
   frameIntervalMs: number;
   lowFramesToClear: number;
+  consecutiveFramesToTrigger?: number;
 };
 
 export const useNSFWDetection = (
@@ -28,9 +30,11 @@ export const useNSFWDetection = (
   const isModelLoading = skipModel ? false : internalLoading;
   const modelRef = useRef<nsfwjs.NSFWJS | null>(null);
   const intervalRef = useRef<number | null>(null);
-  /** Evita parpadeo: hace falta varios frames seguidos por debajo del umbral para quitar NSFW. */
+  /** Histérisis: varios frames seguidos bajo el umbral para quitar NSFW; varios por encima para activar. */
   const consecutiveLowRef = useRef(0);
+  const consecutiveHighRef = useRef(0);
   const rt = runtime ?? DEFAULT_NSFW_DETECTION_RUNTIME;
+  const needHigh = Math.max(1, Math.min(10, rt.consecutiveFramesToTrigger ?? 2));
 
   useEffect(() => {
     if (skipModel) return;
@@ -57,27 +61,32 @@ export const useNSFWDetection = (
   }, [skipModel]);
 
   useEffect(() => {
-    if (skipModel || !modelRef.current || !videoRef.current) return;
+    consecutiveHighRef.current = 0;
+    consecutiveLowRef.current = 0;
+  }, [rt.probabilityThreshold, rt.lowFramesToClear, needHigh, rt.frameIntervalMs]);
+
+  useEffect(() => {
 
     const detect = async () => {
       if (videoRef.current && videoRef.current.readyState === 4) { // HAVE_ENOUGH_DATA
         try {
           const predictions = await modelRef.current!.classify(videoRef.current);
           
-          const nsfwClasses = ['Porn', 'Hentai', 'Sexy'];
-          let nsfwProbability = 0;
+          // Solo Porn + Hentai: «Sexy» dispara muchísimos falsos positivos (piel, ropa normal, pose).
+          const byClass = Object.fromEntries(predictions.map((p) => [p.className, p.probability])) as Record<
+            string,
+            number
+          >;
+          const nsfwProbability = (byClass.Porn ?? 0) + (byClass.Hentai ?? 0);
 
-          predictions.forEach(p => {
-            if (nsfwClasses.includes(p.className)) {
-              nsfwProbability += p.probability;
-            }
-          });
-
-          // Histéresis: un frame malo ya marca; hace falta varios frames buenos seguidos para limpiar.
           if (nsfwProbability > rt.probabilityThreshold) {
             consecutiveLowRef.current = 0;
-            setIsNSFW(true);
+            consecutiveHighRef.current += 1;
+            if (consecutiveHighRef.current >= needHigh) {
+              setIsNSFW(true);
+            }
           } else {
+            consecutiveHighRef.current = 0;
             consecutiveLowRef.current += 1;
             if (consecutiveLowRef.current >= rt.lowFramesToClear) {
               setIsNSFW(false);
@@ -94,7 +103,7 @@ export const useNSFWDetection = (
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [videoRef, isModelLoading, skipModel, rt.probabilityThreshold, rt.frameIntervalMs, rt.lowFramesToClear]);
+  }, [videoRef, isModelLoading, skipModel, rt.probabilityThreshold, rt.frameIntervalMs, rt.lowFramesToClear, needHigh]);
 
   return { isNSFW, isModelLoading };
 };

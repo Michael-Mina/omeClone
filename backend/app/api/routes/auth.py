@@ -21,7 +21,7 @@ from app.services.oauth_verify import verify_google_credential
 from app.core.config import settings
 from app.core.security import verify_password, get_password_hash, create_access_token
 from app.core.age import is_at_least_age, MIN_REGISTER_AGE
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_current_user_allow_banned
 from app.services.premium import premium_status_dict
 from jose import jwt, JWTError
 from fastapi import Header
@@ -379,7 +379,7 @@ def refresh_access_token(
 
 
 @router.get("/me", response_model=UserResponse)
-def read_me(current_user: User = Depends(get_current_user)):
+def read_me(current_user: User = Depends(get_current_user_allow_banned)):
     return current_user
 
 

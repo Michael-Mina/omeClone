@@ -100,6 +100,7 @@ function App() {
       probabilityThreshold: nsfwPublic.probability_threshold,
       frameIntervalMs: nsfwPublic.frame_interval_ms,
       lowFramesToClear: nsfwPublic.low_frames_to_clear,
+      consecutiveFramesToTrigger: nsfwPublic.consecutive_frames_to_trigger ?? 2,
     };
   }, [nsfwPublic]);
 
@@ -716,6 +717,15 @@ function App() {
           <span className="font-bold text-xs leading-snug px-1">Infringiste las normas de la app</span>
           <span className="text-[10px] text-gray-400 mt-2 leading-snug max-w-[220px]">
             Tu cuenta quedó suspendida de forma permanente en este dispositivo por reiteradas infracciones.
+          </span>
+        </div>
+      )}
+      {overlayKind === 'suspended' && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 text-white p-3 text-center z-[11]">
+          <ShieldAlert size={28} className="mb-2 text-amber-500 shrink-0" />
+          <span className="font-bold text-xs leading-snug px-1">Cuenta suspendida</span>
+          <span className="text-[10px] text-gray-400 mt-2 leading-snug max-w-[220px]">
+            Tu cuenta fue suspendida por moderación. Si crees que es un error, contacta con soporte.
           </span>
         </div>
       )}

@@ -10,5 +10,6 @@ class NsfwGlobalAdminOut(BaseModel):
     probability_threshold: float
     frame_interval_ms: int
     low_frames_to_clear: int
+    consecutive_frames_to_trigger: int = Field(ge=1, le=10)
     streak_ms: int
     grace_false_ms: int

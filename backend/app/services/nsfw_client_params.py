@@ -8,6 +8,8 @@ class NsfwClientParamsDTO:
     probability_threshold: float
     frame_interval_ms: int
     low_frames_to_clear: int
+    # Frames seguidos por encima del umbral antes de marcar NSFW (histérisis subida).
+    consecutive_frames_to_trigger: int
     streak_ms: int
     grace_false_ms: int
 
@@ -17,6 +19,7 @@ class NsfwClientParamsDTO:
             "probability_threshold": self.probability_threshold,
             "frame_interval_ms": self.frame_interval_ms,
             "low_frames_to_clear": self.low_frames_to_clear,
+            "consecutive_frames_to_trigger": self.consecutive_frames_to_trigger,
             "streak_ms": self.streak_ms,
             "grace_false_ms": self.grace_false_ms,
         }
@@ -35,6 +38,9 @@ def intensity_to_client_params(intensity: int | None) -> NsfwClientParamsDTO:
     - 0: más permisivo (menos falsos positivos; tarda más en reportar strikes).
     - 50: encaja con valores históricos del repo (~0.6 umbral, 1.5s frame, streak ~10s).
     - 100: más estricto.
+
+    El cliente usa solo Porn + Hentai (no suma «Sexy») para reducir falsos positivos;
+    en modo permisivo se exigen más frames consecutivos antes de activar.
     """
     i = clamp_intensity(intensity)
     t = i / 100.0
@@ -44,6 +50,8 @@ def intensity_to_client_params(intensity: int | None) -> NsfwClientParamsDTO:
     frame_interval_ms = max(700, min(2800, frame_interval_ms))
 
     low_frames_to_clear = max(2, min(6, int(round(2 + 4 * (1 - t)))))
+
+    consecutive_frames_to_trigger = max(1, min(3, int(round(3 - 2 * t))))
 
     streak_ms = int(round(14000 - 7500 * t))
     streak_ms = max(5500, min(24000, streak_ms))
@@ -56,6 +64,7 @@ def intensity_to_client_params(intensity: int | None) -> NsfwClientParamsDTO:
         probability_threshold=threshold,
         frame_interval_ms=frame_interval_ms,
         low_frames_to_clear=low_frames_to_clear,
+        consecutive_frames_to_trigger=consecutive_frames_to_trigger,
         streak_ms=streak_ms,
         grace_false_ms=grace_false_ms,
     )

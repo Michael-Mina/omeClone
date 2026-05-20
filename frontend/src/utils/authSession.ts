@@ -3,14 +3,20 @@ import { useAppStore } from '../store/useAppStore';
 
 let refreshPromise: Promise<string | null> | null = null;
 
-async function probeToken(token: string): Promise<boolean> {
+/** Resultado de GET /api/auth/me para decidir si renovar JWT o conservar sesión (p. ej. baneo). */
+type MeProbe = 'ok' | 'unauth' | 'forbidden' | 'error';
+
+async function probeMe(token: string): Promise<MeProbe> {
   try {
     const res = await fetch(apiUrl('/api/auth/me'), {
       headers: { Authorization: `Bearer ${token}` },
     });
-    return res.ok;
+    if (res.ok) return 'ok';
+    if (res.status === 403) return 'forbidden';
+    if (res.status === 401) return 'unauth';
+    return 'unauth';
   } catch {
-    return false;
+    return 'error';
   }
 }
 
@@ -91,13 +97,19 @@ async function renewAccessToken(
   current: string,
   options?: { forceRefresh?: boolean }
 ): Promise<string | null> {
-  if (!options?.forceRefresh && (await probeToken(current))) {
-    return current;
+  if (!options?.forceRefresh) {
+    const probe = await probeMe(current);
+    if (probe === 'ok') return current;
+    // 403 en /me (despliegues antiguos) o fallo de red: no tratar como token inválido
+    // ni crear otro usuario anónimo (evita “perder” el baneo al recargar).
+    if (probe === 'forbidden' || probe === 'error') return current;
   }
 
   const refreshed = await tryJwtRefresh(current);
-  if (refreshed && (await probeToken(refreshed))) {
-    return refreshed;
+  if (refreshed) {
+    const p = await probeMe(refreshed);
+    if (p === 'ok') return refreshed;
+    if (p === 'forbidden' || p === 'error') return refreshed;
   }
 
   const st = useAppStore.getState();

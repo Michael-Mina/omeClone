@@ -65,7 +65,7 @@ export function formatNsfwCountdown(totalSec: number): string {
   return `${String(m).padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 }
 
-export type NsfwOverlayKind = 'none' | 'live' | 'cooldown' | 'permanent';
+export type NsfwOverlayKind = 'none' | 'live' | 'cooldown' | 'permanent' | 'suspended';
 
 /**
  * Strike y cooldown vienen del servidor (POST /api/auth/nsfw-strike, GET /api/auth/me).
@@ -85,7 +85,10 @@ export function useNsfwEnforcement(
 ) {
   const [cooldownEnd, setCooldownEnd] = useState<number | null>(null);
   const [strikeCount, setStrikeCount] = useState(0);
-  const [permanent, setPermanent] = useState(false);
+  /** Baneo por strikes NSFW (normas de la app / modelo). */
+  const [nsfwPermanent, setNsfwPermanent] = useState(false);
+  /** Suspensión por moderación (`is_banned`) sin marcar baneo NSFW permanente. */
+  const [platformSuspended, setPlatformSuspended] = useState(false);
   const [nowTs, setNowTs] = useState(() => Date.now());
 
   /** Inicio de la ventana continua de NSFW (solo se anula tras GRACE_FALSE_MS sin contenido). */
@@ -96,15 +99,19 @@ export function useNsfwEnforcement(
   const falseMsAccumRef = useRef(0);
   const lastTickRef = useRef<number>(Date.now());
   const cooldownEndRef = useRef<number | null>(null);
-  const permanentRef = useRef(false);
+  const nsfwPermanentRef = useRef(false);
+  const platformSuspendedRef = useRef(false);
   const reportingRef = useRef(false);
 
   useEffect(() => {
     cooldownEndRef.current = cooldownEnd;
   }, [cooldownEnd]);
   useEffect(() => {
-    permanentRef.current = permanent;
-  }, [permanent]);
+    nsfwPermanentRef.current = nsfwPermanent;
+  }, [nsfwPermanent]);
+  useEffect(() => {
+    platformSuspendedRef.current = platformSuspended;
+  }, [platformSuspended]);
 
   const applyServerPayload = useCallback((data: NsfwPayload) => {
     setStrikeCount(Math.max(0, Number(data.nsfw_strike_count) || 0));
@@ -114,9 +121,12 @@ export function useNsfwEnforcement(
       banMs != null && banMs > Date.now() ? banMs : null;
     cooldownEndRef.current = active;
     setCooldownEnd(active);
-    const perm = !!(data.nsfw_permanent_ban || data.is_banned);
-    permanentRef.current = perm;
-    setPermanent(perm);
+    const nsfwPerm = !!(data.nsfw_permanent_ban);
+    const plat = !!(data.is_banned) && !nsfwPerm;
+    nsfwPermanentRef.current = nsfwPerm;
+    platformSuspendedRef.current = plat;
+    setNsfwPermanent(nsfwPerm);
+    setPlatformSuspended(plat);
   }, []);
 
   /** Sincroniza estado NSFW con el servidor (otro dispositivo / F5). Solo hace falta el token. */
@@ -128,10 +138,6 @@ export function useNsfwEnforcement(
         const res = await fetch(apiUrl('/api/auth/me'), {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (res.status === 403) {
-          useAppStore.getState().setAuth('', '', 'user', null, false);
-          return;
-        }
         if (!res.ok || cancelled) return;
         const data = (await res.json()) as NsfwPayload;
         if (!cancelled) applyServerPayload(data);
@@ -153,21 +159,25 @@ export function useNsfwEnforcement(
       setStrikeCount(0);
       setCooldownEnd(null);
       cooldownEndRef.current = null;
-      setPermanent(false);
-      permanentRef.current = false;
+      setNsfwPermanent(false);
+      setPlatformSuspended(false);
+      nsfwPermanentRef.current = false;
+      platformSuspendedRef.current = false;
       streakAnchorRef.current = null;
       falseMsAccumRef.current = 0;
       lastTickRef.current = Date.now();
     };
 
     if (userId == null || userId === '') {
+      // Con token pero userId aún no hidratado: no borrar estado ni pegar strikes al “usuario vacío”.
+      if (token) return;
       clearLocal();
       return;
     }
     if (prev !== null && prev !== '' && prev !== userId) {
       clearLocal();
     }
-  }, [userId]);
+  }, [userId, token]);
 
   const reportStrikeToServer = useCallback(async () => {
     if (!token || reportingRef.current) return;
@@ -182,12 +192,24 @@ export function useNsfwEnforcement(
         },
         body: JSON.stringify({ match_zone: zone }),
       });
-      const data = (await res.json()) as NsfwPayload & { detail?: unknown };
       if (res.status === 403) {
-        applyServerPayload({ nsfw_permanent_ban: true, is_banned: true });
-        useAppStore.getState().setAuth('', '', 'user', null, false);
+        // `get_current_user` bloquea cuentas suspendidas; sincronizar con /me sin vaciar sesión.
+        try {
+          const me = await fetch(apiUrl('/api/auth/me'), {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (me.ok) {
+            const sync = (await me.json()) as NsfwPayload;
+            applyServerPayload(sync);
+          } else {
+            applyServerPayload({ is_banned: true });
+          }
+        } catch {
+          applyServerPayload({ is_banned: true });
+        }
         return;
       }
+      const data = (await res.json()) as NsfwPayload & { detail?: unknown };
       if (res.ok) {
         applyServerPayload(data);
         if (cooldownEndRef.current == null) {
@@ -204,14 +226,21 @@ export function useNsfwEnforcement(
   }, [token, applyServerPayload]);
 
   useEffect(() => {
-    if (exempt || permanentRef.current || !userId || !token) return;
+    if (
+      exempt ||
+      nsfwPermanentRef.current ||
+      platformSuspendedRef.current ||
+      !userId ||
+      !token
+    )
+      return;
 
     const tick = window.setInterval(() => {
       const now = Date.now();
       const dt = Math.min(Math.max(now - lastTickRef.current, 0), 1500);
       lastTickRef.current = now;
 
-      if (permanentRef.current) return;
+      if (nsfwPermanentRef.current || platformSuspendedRef.current) return;
 
       const cd = cooldownEndRef.current;
       if (cd !== null && now < cd) {
@@ -260,17 +289,22 @@ export function useNsfwEnforcement(
     return Math.max(0, Math.ceil((cooldownEnd - Date.now()) / 1000));
   }, [cooldownEnd, nowTs]);
 
-  const visualBlur = exempt ? false : !!(isNSFW || inCooldown || permanent);
+  const visualBlur = exempt
+    ? false
+    : !!(isNSFW || inCooldown || nsfwPermanent || platformSuspended);
 
   const overlayKind: NsfwOverlayKind = useMemo(() => {
     if (exempt) return 'none';
-    if (permanent) return 'permanent';
+    if (platformSuspended) return 'suspended';
+    if (nsfwPermanent) return 'permanent';
     if (inCooldown) return 'cooldown';
     if (isNSFW) return 'live';
     return 'none';
-  }, [exempt, permanent, inCooldown, isNSFW]);
+  }, [exempt, platformSuspended, nsfwPermanent, inCooldown, isNSFW]);
 
-  const blocksMatchmaking = exempt ? false : !!(permanent || inCooldown);
+  const blocksMatchmaking = exempt
+    ? false
+    : !!(nsfwPermanent || platformSuspended || inCooldown);
 
   return {
     visualBlur,
@@ -279,6 +313,9 @@ export function useNsfwEnforcement(
     cooldownCountdownLabel: formatNsfwCountdown(cooldownRemainingSec),
     strikeCount,
     blocksMatchmaking,
-    permanent,
+    /** @deprecated usar `nsfwPermanent`; se mantiene por compatibilidad. */
+    permanent: nsfwPermanent,
+    nsfwPermanent,
+    platformSuspended,
   };
 }
