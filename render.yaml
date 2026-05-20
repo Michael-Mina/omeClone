@@ -1,17 +1,17 @@
 # Blueprint Render: https://render.com/docs/infrastructure-as-code
 #
-# omeclone-api: tras el primer deploy, en el panel añade DATABASE_URL (Neon) si sync: false.
-# omeclone-web: añade VITE_BACKEND_URL = URL pública del API (HTTPS, sin barra final).
+# albedrio-api: tras el primer deploy, en el panel añade DATABASE_URL (Neon) si sync: false.
+# albedrio-web: añade VITE_BACKEND_URL = URL pública del API (HTTPS, sin barra final).
 #
-# Tras cambios en el front, si sigues viendo UI vieja (p. ej. botón Facebook ya eliminado en código):
-# Dashboard → servicio static omeclone-web → Headers (docs: render.com/docs/static-site-headers):
+# Tras cambios en el front, si sigues viendo UI vieja:
+# Dashboard → servicio static albedrio-web → Headers (docs: render.com/docs/static-site-headers):
 #   Path: /      Name: Cache-Control  Value: no-cache, no-store, must-revalidate
 #   Path: /index.html  (mismo header)
 # Luego Clear build cache + Manual Deploy del sitio estático.
 
 services:
   - type: web
-    name: omeclone-api
+    name: albedrio-api
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: backend
@@ -24,7 +24,7 @@ services:
         generateValue: true
 
   - type: web
-    name: omeclone-web
+    name: albedrio-web
     runtime: static
     rootDir: frontend
     # Render suele tener NODE_ENV=production; npm ci entonces OMITE devDependencies y falla vite/tsc/cross-env.

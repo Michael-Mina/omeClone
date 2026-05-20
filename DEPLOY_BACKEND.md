@@ -17,7 +17,7 @@ Objetivo: una URL **HTTPS** pública para el backend (FastAPI + Socket.IO).
 3. En **Environment** del servicio web añade:
    - `DATABASE_URL` = la cadena de Neon (tal cual).
    - `SECRET_KEY` = una cadena larga aleatoria (o la que genere Render si usas blueprint).
-4. **Deploy**. Cuando termine, tendrás una URL tipo `https://omeclone-api.onrender.com`.
+4. **Deploy**. Cuando termine, tendrás una URL tipo `https://albedrio-api.onrender.com`.
 
 ### C) Probar
 

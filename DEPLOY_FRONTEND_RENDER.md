@@ -8,13 +8,13 @@ Muchas veces Render exporta **`NODE_ENV=production`** antes de `npm ci`, y npm *
 
 ## Desde el Blueprint del repo (`render.yaml`)
 
-El archivo `render.yaml` ya incluye el servicio **`omeclone-web`** (`runtime: static`).
+El archivo `render.yaml` ya incluye el servicio **`albedrio-web`** (`runtime: static`).
 
 1. En [Render Dashboard](https://dashboard.render.com) → tu **Blueprint** del repo `omeClone`.
 2. **Manual sync** (o push a `main` si el blueprint auto-sincroniza).
 3. Cuando pida variables del sitio estático, define:
-   - **`VITE_BACKEND_URL`** = URL base de tu API en Render, por ejemplo `https://omeclone-api.onrender.com` (sin `/` final).
-4. Espera el build. La URL será tipo `https://omeclone-web.onrender.com`.
+   - **`VITE_BACKEND_URL`** = URL base de tu API en Render, por ejemplo `https://albedrio-api.onrender.com` (sin `/` final).
+4. Espera el build. La URL será tipo `https://albedrio-web.onrender.com`.
 
 **Regla SPA:** el blueprint lleva una **rewrite** `/*` → `/index.html`. Si un archivo existe (p. ej. `/assets/index-xyz.js`), Render lo sirve; si no, devuelve el HTML de la SPA (útiles rutas `/login`, `/admin` al recargar).
 
@@ -53,7 +53,7 @@ El archivo `render.yaml` ya incluye el servicio **`omeclone-web`** (`runtime: st
 
 ### Inferencia `…-web` / `…-api` en Render
 
-Si el dominio del front es **`algo-web.onrender.com`**, el cliente usa **`https://algo-api.onrender.com`** cuando no hay **`VITE_BACKEND_URL`** (coincide con **`omeclone-web`** / **`omeclone-api`** del blueprint). Así se evita **`localhost`** en producción.
+Si el dominio del front es **`algo-web.onrender.com`**, el cliente usa **`https://algo-api.onrender.com`** cuando no hay **`VITE_BACKEND_URL`** (coincide con **`albedrio-web`** / **`albedrio-api`** del blueprint). Así se evita **`localhost`** en producción.
 
 Para otros nombres de servicio, define **`VITE_BACKEND_URL`** y redeploy.
 

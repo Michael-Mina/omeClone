@@ -4,7 +4,7 @@
  * Orden en producción (build):
  * 1) `VITE_BACKEND_URL` (.env / variables de CI)
  * 2) Convención Render del blueprint: mismo prefijo `-web` / `-api` en `*.onrender.com`
- *    (ej. `omeclone-web.onrender.com` → `https://omeclone-api.onrender.com`)
+ *    (ej. `albedrio-web.onrender.com` → `https://albedrio-api.onrender.com`)
  * 3) Último recurso solo en local preview: puerto habitual del repo
  *
  * Desarrollo (`import.meta.env.DEV`): cadena vacía → `/api` y Socket.IO vía origen (proxy Vite).
@@ -12,7 +12,7 @@
 
 const LOCAL_PREVIEW_API = 'http://127.0.0.1:8002';
 
-/** `omeclone-web.onrender.com` → `https://omeclone-api.onrender.com` */
+/** `albedrio-web.onrender.com` → `https://albedrio-api.onrender.com` */
 function inferRenderSiblingApiOrigin(hostname: string): string | null {
   const h = hostname.toLowerCase();
   if (!h.endsWith('.onrender.com')) return null;

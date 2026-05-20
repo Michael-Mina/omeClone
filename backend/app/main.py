@@ -74,7 +74,7 @@ _extra_origins = [
     if o.strip()
 ]
 _allow_origins = [
-    "https://omeclone-web.onrender.com",
+    "https://albedrio-web.onrender.com",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     *_extra_origins,
