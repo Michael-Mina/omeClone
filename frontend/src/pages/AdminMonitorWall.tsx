@@ -344,66 +344,102 @@ export default function AdminMonitorWall() {
     setPickerSlot(null);
   };
 
+  const openPicker = (slotIndex: number) => {
+    setPickerSlot(slotIndex);
+    setUserSearch('');
+    if (!mdUp) setFocusedSlot(null);
+  };
+
+  const compact = !mdUp;
+  const showFocusPanel = focusedSlot != null && focusMeta != null && (!compact || pickerSlot == null);
+
   return (
-    <div className="h-dvh min-h-0 flex flex-col bg-black text-gray-200 font-sans">
-      <header className="shrink-0 flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-gray-800 bg-gray-950">
-        <div className="flex items-center gap-2 min-w-0">
-          <Link
-            to="/admin"
-            className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800"
-            title="Volver al panel"
-          >
-            <ArrowLeft size={20} />
-          </Link>
-          <Grid3X3 size={22} className="text-cyan-400 shrink-0" />
-          <div className="min-w-0">
-            <h1 className="text-sm md:text-base font-bold text-white truncate">Muro de monitores</h1>
-            <p className="text-[10px] text-gray-500 hidden sm:block">
-              Clic en ventana = monitor activo · altavoz = escuchar
-            </p>
+    <div className="h-dvh min-h-0 flex flex-col bg-black text-gray-200 font-sans overflow-hidden">
+      <header className="shrink-0 border-b border-gray-800 bg-gray-950">
+        <div className="flex items-center justify-between gap-2 px-2 py-2 sm:px-3">
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+            {compact && focusedSlot != null ? (
+              <button
+                type="button"
+                onClick={() => setFocusedSlot(null)}
+                className="p-2 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 shrink-0"
+                title="Volver al muro"
+              >
+                <ArrowLeft size={20} />
+              </button>
+            ) : (
+              <Link
+                to="/admin"
+                className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 shrink-0"
+                title="Volver al panel"
+              >
+                <ArrowLeft size={20} />
+              </Link>
+            )}
+            <Grid3X3 size={20} className="text-cyan-400 shrink-0" />
+            <div className="min-w-0">
+              <h1 className="text-sm font-bold text-white truncate leading-tight">
+                {compact && focusedSlot != null
+                  ? `Monitor ${focusedSlot + 1}`
+                  : 'Muro de monitores'}
+              </h1>
+              <p className="text-[10px] text-gray-500 truncate">
+                {compact && focusedSlot != null && focusMeta?.user?.display_name
+                  ? focusMeta.user.display_name
+                  : compact
+                    ? 'Toca ventana · usuario = asignar'
+                    : 'Clic en ventana = monitor activo · altavoz = escuchar'}
+              </p>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap justify-end">
-          <button
-            type="button"
-            onClick={() => void fetchUsers()}
-            className="p-2 rounded-lg bg-gray-800 border border-gray-700 hover:bg-gray-700"
-            title="Actualizar lista"
-          >
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-          </button>
-          {!isRecording ? (
-            <button
-              type="button"
-              onClick={() => startRecording('wall')}
-              className="text-[10px] font-semibold px-2 py-1.5 rounded-lg bg-gray-800 border border-gray-700 hover:bg-gray-700"
-              title="Grabar todo el muro"
-            >
-              Grabar muro
-            </button>
-          ) : recordMode === 'wall' ? (
-            <button
-              type="button"
-              onClick={() => void stopRecording()}
-              className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-white bg-red-700 text-[10px] font-mono"
-            >
-              <Square size={12} className="fill-current" />
-              {String(Math.floor(recordElapsedSec / 60)).padStart(2, '0')}:
-              {String(recordElapsedSec % 60).padStart(2, '0')}
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={clearAllSlots}
-            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700 hover:bg-gray-700"
-          >
-            Limpiar todo
-          </button>
+          {(!compact || focusedSlot == null) && (
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => void fetchUsers()}
+                className="p-2 rounded-lg bg-gray-800 border border-gray-700 hover:bg-gray-700"
+                title="Actualizar"
+              >
+                <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+              </button>
+              {!isRecording ? (
+                <button
+                  type="button"
+                  onClick={() => startRecording('wall')}
+                  className="hidden sm:inline text-[10px] font-semibold px-2 py-1.5 rounded-lg bg-gray-800 border border-gray-700 hover:bg-gray-700"
+                  title="Grabar muro"
+                >
+                  Grabar
+                </button>
+              ) : recordMode === 'wall' ? (
+                <button
+                  type="button"
+                  onClick={() => void stopRecording()}
+                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-white bg-red-700 text-[10px] font-mono"
+                >
+                  <Square size={12} className="fill-current" />
+                  {String(Math.floor(recordElapsedSec / 60)).padStart(2, '0')}:
+                  {String(recordElapsedSec % 60).padStart(2, '0')}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={clearAllSlots}
+                className="text-[10px] font-semibold px-2 py-1.5 rounded-lg bg-gray-800 border border-gray-700 hover:bg-gray-700"
+              >
+                Limpiar
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
-      <div className="flex-1 min-h-0 flex flex-col xl:flex-row">
-        <div className="flex-1 min-h-0 p-2 md:p-3 min-w-0">
+      <div className="flex-1 min-h-0 flex flex-col xl:flex-row overflow-hidden">
+        <div
+          className={`min-h-0 min-w-0 p-2 md:p-3 ${
+            compact && focusedSlot != null ? 'hidden' : 'flex-1 overflow-y-auto overscroll-contain'
+          }`}
+        >
           <div
             className="h-full w-full grid gap-1 md:gap-1.5"
             style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
@@ -485,8 +521,8 @@ export default function AdminMonitorWall() {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setPickerSlot(isPicking ? null : i);
-                            setUserSearch('');
+                            if (isPicking) setPickerSlot(null);
+                            else openPicker(i);
                           }}
                           className="p-1 rounded bg-gray-800 text-cyan-300 hover:bg-gray-700"
                           title="Asignar usuario"
@@ -526,18 +562,23 @@ export default function AdminMonitorWall() {
 
         <div
           ref={monitorPanelRef}
-          className={`shrink-0 flex flex-col bg-gray-900 border-gray-800 w-full xl:w-[min(92vw,520px)] border-t xl:border-t-0 xl:border-l min-h-0 fullscreen:fixed fullscreen:inset-0 fullscreen:z-[200] fullscreen:w-screen fullscreen:h-[100dvh] fullscreen:rounded-none fullscreen:border-0 ${
-            focusedSlot != null ? 'max-h-[45dvh] xl:max-h-none' : 'max-h-0 xl:max-w-0 xl:overflow-hidden xl:border-0'
+          className={`flex flex-col bg-gray-900 border-gray-800 min-h-0 fullscreen:fixed fullscreen:inset-0 fullscreen:z-[200] fullscreen:w-screen fullscreen:h-[100dvh] fullscreen:rounded-none fullscreen:border-0 ${
+            showFocusPanel
+              ? compact
+                ? 'flex-1 w-full border-0'
+                : 'shrink-0 w-full xl:w-[min(92vw,520px)] border-t xl:border-t-0 xl:border-l xl:max-h-none'
+              : 'hidden xl:flex xl:shrink-0 xl:w-[min(92vw,520px)] xl:max-w-0 xl:overflow-hidden xl:border-0'
           }`}
         >
-          {focusedSlot != null && focusMeta ? (
+          {showFocusPanel ? (
             <>
-              <div className="p-3 border-b border-gray-800 bg-gray-800/50 flex flex-wrap items-center justify-between gap-2 shrink-0">
-                <h2 className="font-bold text-purple-400 text-sm flex items-center gap-2 min-w-0">
-                  <Video size={16} className="shrink-0" />
-                  <span className="truncate">
-                    Monitor {focusedSlot + 1}: {focusMeta.user?.display_name || '—'}
+              <div className="p-2 sm:p-3 border-b border-gray-800 bg-gray-800/50 flex items-center justify-between gap-2 shrink-0">
+                <h2 className="font-bold text-purple-400 text-sm flex items-center gap-2 min-w-0 xl:flex">
+                  <Video size={16} className="shrink-0 hidden xl:block" />
+                  <span className="truncate hidden xl:inline">
+                    Monitor {focusedSlot! + 1}: {focusMeta!.user?.display_name || '—'}
                   </span>
+                  <span className="text-xs text-gray-400 xl:hidden">Controles</span>
                 </h2>
                 <div className="flex items-center gap-1 shrink-0">
                   <button
@@ -608,11 +649,13 @@ export default function AdminMonitorWall() {
                 <div
                   className={`flex-1 bg-black grid min-h-0 ${
                     focusPeerSid
-                      ? 'grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-gray-800'
+                      ? compact
+                        ? 'grid-cols-1 grid-rows-2 divide-y divide-gray-800'
+                        : 'grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-gray-800'
                       : 'grid-cols-1'
                   }`}
                 >
-                  <div className="relative min-h-[120px] bg-gray-950">
+                  <div className={`relative bg-gray-950 ${compact && focusPeerSid ? 'min-h-[22dvh]' : 'min-h-[120px]'}`}>
                     <video
                       ref={focusVideoPrimaryRef}
                       autoPlay
@@ -625,7 +668,7 @@ export default function AdminMonitorWall() {
                     </div>
                   </div>
                   {focusPeerSid ? (
-                    <div className="relative min-h-[120px] bg-gray-950">
+                    <div className={`relative bg-gray-950 ${compact ? 'min-h-[22dvh]' : 'min-h-[120px]'}`}>
                       <video
                         ref={focusVideoPeerRef}
                         autoPlay
@@ -642,7 +685,7 @@ export default function AdminMonitorWall() {
                 {!monitorChatHidden && (
                   <div
                     className={`shrink-0 border-t border-gray-800 bg-gray-950 flex flex-col min-h-[88px] ${
-                      mdUp ? 'max-h-[min(28vh,180px)]' : 'max-h-[min(32vh,200px)]'
+                      compact ? 'max-h-[min(28dvh,160px)]' : 'max-h-[min(28vh,180px)]'
                     }`}
                   >
                     <MatchChatPanel
@@ -668,9 +711,73 @@ export default function AdminMonitorWall() {
           )}
         </div>
 
+        {compact && pickerSlot != null && (
+          <>
+            <div
+              role="presentation"
+              className="fixed inset-0 z-40 bg-black/70 backdrop-blur-[2px]"
+              onClick={() => setPickerSlot(null)}
+            />
+            <aside className="fixed inset-x-0 bottom-0 z-50 flex max-h-[min(78dvh,520px)] flex-col rounded-t-2xl border-t border-gray-700 bg-gray-950 shadow-2xl">
+              <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-gray-600 shrink-0" aria-hidden />
+              <div className="shrink-0 flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-800">
+                <p className="text-sm font-bold text-white flex items-center gap-2 min-w-0">
+                  <User size={16} className="text-cyan-400 shrink-0" />
+                  <span className="truncate">Asignar monitor {pickerSlot + 1}</span>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setPickerSlot(null)}
+                  className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800"
+                  aria-label="Cerrar"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="shrink-0 px-3 pb-2">
+                <div className="relative">
+                  <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                    placeholder="Buscar usuario…"
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg pl-8 pr-2 py-2.5 text-sm text-white outline-none focus:border-cyan-500"
+                  />
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto overscroll-contain px-3 pb-2 space-y-1.5 min-h-0">
+                {pickerCandidates.length === 0 ? (
+                  <p className="text-xs text-gray-500 text-center py-8">No hay usuarios en línea.</p>
+                ) : (
+                  pickerCandidates.map((u) => (
+                    <button
+                      key={u.row_key}
+                      type="button"
+                      onClick={() => assignUser(pickerSlot, u)}
+                      className="w-full text-left rounded-xl px-3 py-3 bg-gray-900 border border-gray-800 active:bg-gray-800"
+                    >
+                      <p className="text-sm font-semibold text-white truncate">{u.display_name || 'Usuario'}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">{statusLabel(u)}</p>
+                    </button>
+                  ))
+                )}
+              </div>
+              <div className="shrink-0 p-3 border-t border-gray-800 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                <button
+                  type="button"
+                  onClick={() => setPickerSlot(null)}
+                  className="w-full py-3 text-sm font-semibold rounded-xl bg-gray-800 text-gray-200"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </aside>
+          </>
+        )}
+
         <aside
-          className={`shrink-0 border-t xl:border-t-0 xl:border-l border-gray-800 bg-gray-950 flex flex-col w-full xl:w-72 min-h-0 ${
-            pickerSlot != null ? 'max-h-[35dvh] xl:max-h-none' : 'hidden xl:flex'
+          className={`shrink-0 border-t xl:border-t-0 xl:border-l border-gray-800 bg-gray-950 flex flex-col w-full xl:w-72 min-h-0 max-xl:hidden ${
+            pickerSlot != null ? 'xl:flex xl:max-h-none' : 'hidden xl:flex'
           }`}
         >
           <div className="p-3 border-b border-gray-800">
