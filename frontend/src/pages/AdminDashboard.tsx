@@ -533,7 +533,6 @@ const AdminDashboard: React.FC = () => {
       void fetchBillingSettings();
       void fetchSuggestionsUnread();
     });
-    const interval = setInterval(() => void fetchUsers({ silent: true }), 5000);
     const suggestionsPoll = setInterval(() => void fetchSuggestionsUnread(), 30_000);
 
     if (!socket.connected) socket.connect();
@@ -603,7 +602,6 @@ const AdminDashboard: React.FC = () => {
     socket.on('spy_ice_candidate', handleSpyIceCandidate);
 
     return () => {
-      clearInterval(interval);
       clearInterval(suggestionsPoll);
       socket.off('connect', onConnect);
       socket.off('spy_offer', handleSpyOffer);
@@ -1809,7 +1807,7 @@ const AdminDashboard: React.FC = () => {
             <button
               type="button"
               onClick={() => void fetchUsers()}
-              title="Refrescar"
+              title="Refrescar lista (manual)"
               className="text-gray-400 hover:text-white transition-colors"
             >
               <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />

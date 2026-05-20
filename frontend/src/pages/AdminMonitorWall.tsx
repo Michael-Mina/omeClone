@@ -172,8 +172,6 @@ export default function AdminMonitorWall() {
 
   useEffect(() => {
     void fetchUsers();
-    const id = window.setInterval(() => void fetchUsers(), 5000);
-    return () => clearInterval(id);
   }, [fetchUsers]);
 
   useEffect(() => {
@@ -459,7 +457,7 @@ export default function AdminMonitorWall() {
                 type="button"
                 onClick={() => void fetchUsers()}
                 className="p-2 rounded-lg bg-gray-800 border border-gray-700 hover:bg-gray-700"
-                title="Actualizar"
+                title="Actualizar lista (manual)"
               >
                 <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
               </button>
