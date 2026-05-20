@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from fastapi.security import OAuth2PasswordRequestForm
@@ -23,6 +23,7 @@ from app.core.security import verify_password, get_password_hash, create_access_
 from app.core.age import is_at_least_age, MIN_REGISTER_AGE
 from app.api.deps import get_current_user, get_current_user_allow_banned
 from app.services.premium import premium_status_dict
+from app.core.limiter import limiter
 from jose import jwt, JWTError
 from fastapi import Header
 import uuid
@@ -140,7 +141,8 @@ def oauth_providers():
 
 
 @router.post("/oauth/google", response_model=Token)
-def oauth_google(body: OAuthGoogleIn, db: Session = Depends(get_db)):
+@limiter.limit("18/minute")
+def oauth_google(request: Request, body: OAuthGoogleIn, db: Session = Depends(get_db)):
     if not settings.google_oauth_client_id_list:
         raise HTTPException(status_code=503, detail="Inicio de sesión con Google no está configurado")
     try:
@@ -185,7 +187,8 @@ def oauth_google(body: OAuthGoogleIn, db: Session = Depends(get_db)):
 
 
 @router.post("/register", response_model=UserResponse)
-def register(user_in: UserCreate, db: Session = Depends(get_db)):
+@limiter.limit("6/minute")
+def register(request: Request, user_in: UserCreate, db: Session = Depends(get_db)):
     if not user_in.is_anonymous:
         if not user_in.password or not user_in.email:
             raise HTTPException(status_code=400, detail="Email y contraseña son obligatorios")
@@ -228,7 +231,12 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
     return new_user
 
 @router.post("/login", response_model=Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def login(
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+):
     user = db.query(User).filter(User.email == form_data.username).first()
     if not user or not user.hashed_password:
         raise HTTPException(
@@ -247,7 +255,8 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     return _token_payload(user)
 
 @router.post("/anonymous-login", response_model=Token)
-def anonymous_login(payload: AnonymousLoginIn, db: Session = Depends(get_db)):
+@limiter.limit("20/minute")
+def anonymous_login(request: Request, payload: AnonymousLoginIn, db: Session = Depends(get_db)):
     if not payload.adult_declaration:
         raise HTTPException(
             status_code=400,
@@ -280,7 +289,9 @@ def anonymous_login(payload: AnonymousLoginIn, db: Session = Depends(get_db)):
 
 
 @router.post("/nsfw-strike", response_model=NsfwStrikeResponse)
+@limiter.limit("45/minute")
 def record_nsfw_strike(
+    request: Request,
     body: NsfwStrikeIn | None = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -339,7 +350,9 @@ def record_nsfw_strike(
 
 
 @router.post("/refresh", response_model=Token)
+@limiter.limit("90/minute")
 def refresh_access_token(
+    request: Request,
     authorization: str | None = Header(None),
     db: Session = Depends(get_db),
 ):

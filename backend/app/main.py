@@ -1,6 +1,10 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from starlette.middleware.cors import CORSMiddleware
 import socketio
 import logging
@@ -9,11 +13,14 @@ import os
 from app.api.routes import auth, admin, translate, settings_public, billing, suggestions
 from app.api.websockets import sio
 from app.db.base import Base
-from app.db.session import engine
+from app.db.session import engine, get_db
 from app.db.sqlite_compat import ensure_user_table_columns, ensure_system_settings_columns
+from sqlalchemy.orm import Session
+from app.core.limiter import limiter
 from app.models.user import User  # Importar para que Base conozca la tabla
 from app.models.system_settings import SystemSettings  # tabla system_settings
 from app.models.suggestion import Suggestion  # noqa: F401 — tabla suggestions
+from app.models.admin_audit_log import AdminAuditLog  # noqa: F401 — tabla admin_audit_log
 
 _log = logging.getLogger("uvicorn.error")
 
@@ -39,6 +46,8 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Albedrío API", lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Rutas REST antes del wrapper Socket.IO (mismo objeto `app`).
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
@@ -54,16 +63,40 @@ async def root():
     return {"status": "ok", "message": "Albedrío API is running"}
 
 
+def _health_payload(db_ok: bool) -> dict:
+    return {
+        "status": "ok" if db_ok else "degraded",
+        "service": "ometv-api",
+        "database": "ok" if db_ok else "unavailable",
+    }
+
+
 @app.get("/health")
-async def health_short():
+def health_short(db: Session = Depends(get_db)):
     """Alias corto: si /api/health da 404, prueba esta URL en el mismo puerto."""
-    return {"status": "ok", "service": "ometv-api", "route": "/health"}
+    try:
+        db.execute(text("SELECT 1"))
+        ok = True
+    except Exception:
+        ok = False
+    body = {**_health_payload(ok), "route": "/health"}
+    if not ok:
+        return JSONResponse(status_code=503, content=body)
+    return body
 
 
 @app.get("/api/health")
-async def api_health():
-    """Sin auth: sirve para comprobar que este proceso es el API correcto (evitar otro servicio en el mismo puerto)."""
-    return {"status": "ok", "service": "ometv-api", "route": "/api/health"}
+def api_health(db: Session = Depends(get_db)):
+    """Comprueba proceso + conexión a base de datos."""
+    try:
+        db.execute(text("SELECT 1"))
+        ok = True
+    except Exception:
+        ok = False
+    body = {**_health_payload(ok), "route": "/api/health"}
+    if not ok:
+        return JSONResponse(status_code=503, content=body)
+    return body
 
 
 # ASGI: Socket.IO + FastAPI. CORS debe envolver el árbol COMPLETO; si solo está en FastAPI, algunas

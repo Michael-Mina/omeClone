@@ -1,12 +1,13 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.user import User
 from app.api.websockets import online_users, sio
 from app.api.deps import get_current_superuser
 from app.schemas.user import UserExemptionsUpdate
+from app.models.admin_audit_log import AdminAuditLog, audit_client_ip, log_admin_action
 from app.models.system_settings import SystemSettings
 from app.schemas.global_settings import NsfwGlobalPatch, NsfwGlobalAdminOut
 from app.schemas.billing import AdminPremiumPatch, BillingSettingsOut, BillingSettingsPatch
@@ -266,10 +267,36 @@ def get_online_users_alias(current_user: User = Depends(get_current_superuser), 
         })
     return {"users": slim}
 
+@router.get("/audit-log")
+def get_audit_log(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_superuser),
+    limit: int = 80,
+):
+    """Historial reciente de acciones admin (baneos, exenciones, etc.)."""
+    lim = min(max(limit, 1), 500)
+    rows = db.query(AdminAuditLog).order_by(AdminAuditLog.id.desc()).limit(lim).all()
+    return {
+        "items": [
+            {
+                "id": r.id,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "actor_user_id": r.actor_user_id,
+                "action": r.action,
+                "target_user_id": r.target_user_id,
+                "detail": r.detail,
+                "ip": r.ip,
+            }
+            for r in rows
+        ]
+    }
+
+
 @router.patch("/users/{user_id}/exemptions")
 @router.put("/users/{user_id}/exemptions")
 async def update_user_exemptions(
     user_id: int,
+    request: Request,
     body: UserExemptionsUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_superuser),
@@ -283,6 +310,20 @@ async def update_user_exemptions(
         user.exempt_from_ai_censorship = body.exempt_from_ai_censorship
     db.commit()
     db.refresh(user)
+    detail_payload: dict = {}
+    if body.exempt_from_ban is not None:
+        detail_payload["exempt_from_ban"] = body.exempt_from_ban
+    if body.exempt_from_ai_censorship is not None:
+        detail_payload["exempt_from_ai_censorship"] = body.exempt_from_ai_censorship
+    log_admin_action(
+        db,
+        actor=current_user,
+        action="exemptions_update",
+        target_user_id=user.id,
+        detail=detail_payload if detail_payload else None,
+        client_ip=audit_client_ip(request),
+    )
+    db.commit()
     payload = {
         "user_id": user.id,
         "exempt_from_ban": bool(getattr(user, "exempt_from_ban", False)),
@@ -295,8 +336,13 @@ async def update_user_exemptions(
 
 
 @router.put("/users/{user_id}/ban")
-async def ban_user(user_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_superuser)):
-    # 1. Update in DB if it's a real user ID (integer)
+async def ban_user(
+    user_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_superuser),
+):
+    target_db_id = None
     try:
         real_id = int(user_id)
         user = db.query(User).filter(User.id == real_id).first()
@@ -308,30 +354,52 @@ async def ban_user(user_id: str, db: Session = Depends(get_db), current_user: Us
                 )
             user.is_banned = True
             db.commit()
+            target_db_id = user.id
     except ValueError:
-        pass # It's probably an anon string, we just kick them from current session
-        
-    # 2. Kick them from websockets and mark as banned in memory
+        pass
+
     for sid, info in list(online_users.items()):
         if str(info.get("user_id")) == str(user_id):
-            # Emit a ban event so client disconnects and shows message
-            await sio.emit('banned', to=sid)
-            # Desconectar al usuario
+            await sio.emit("banned", to=sid)
             await sio.disconnect(sid)
+
+    log_admin_action(
+        db,
+        actor=current_user,
+        action="ban_user",
+        target_user_id=target_db_id,
+        detail={"param": user_id},
+        client_ip=audit_client_ip(request),
+    )
+    db.commit()
 
     return {"message": f"User {user_id} has been banned."}
 
+
 @router.put("/users/{user_id}/unban")
-def unban_user(user_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_superuser)):
+def unban_user(
+    user_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_superuser),
+):
     try:
         real_id = int(user_id)
         user = db.query(User).filter(User.id == real_id).first()
         if user:
             user.is_banned = False
             db.commit()
+            log_admin_action(
+                db,
+                actor=current_user,
+                action="unban_user",
+                target_user_id=user.id,
+                client_ip=audit_client_ip(request),
+                detail=None,
+            )
+            db.commit()
             return {"message": f"User {user_id} has been unbanned."}
-        else:
-            raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="User not found")
     except ValueError:
         return {"message": "Anonymous users cannot be permanently unbanned."}
 

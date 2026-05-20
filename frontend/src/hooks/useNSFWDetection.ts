@@ -26,6 +26,7 @@ export const useNSFWDetection = (
 ) => {
   const [isNSFW, setIsNSFW] = useState(false);
   const [internalLoading, setInternalLoading] = useState(true);
+  const [modelLoadFailed, setModelLoadFailed] = useState(false);
   const skipModel = role === 'superadmin' || exemptFromAiCensorship;
   const isModelLoading = skipModel ? false : internalLoading;
   const modelRef = useRef<nsfwjs.NSFWJS | null>(null);
@@ -37,10 +38,14 @@ export const useNSFWDetection = (
   const needHigh = Math.max(1, Math.min(10, rt.consecutiveFramesToTrigger ?? 2));
 
   useEffect(() => {
-    if (skipModel) return;
+    if (skipModel) {
+      setModelLoadFailed(false);
+      return;
+    }
 
     const loadModel = async () => {
       try {
+        setModelLoadFailed(false);
         await tf.ready();
         // Se carga el modelo usando CDN
         const model = await nsfwjs.load();
@@ -49,6 +54,8 @@ export const useNSFWDetection = (
         console.log("NSFW Model loaded");
       } catch (err) {
         console.error("Failed to load NSFW model", err);
+        modelRef.current = null;
+        setModelLoadFailed(true);
         setInternalLoading(false);
       }
     };
@@ -110,5 +117,5 @@ export const useNSFWDetection = (
     };
   }, [videoRef, isModelLoading, skipModel, rt.probabilityThreshold, rt.frameIntervalMs, rt.lowFramesToClear, needHigh]);
 
-  return { isNSFW, isModelLoading };
+  return { isNSFW, isModelLoading, modelLoadFailed: skipModel ? false : modelLoadFailed };
 };

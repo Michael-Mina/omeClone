@@ -112,7 +112,7 @@ function App() {
   const exemptFromNsfwPolicy =
     role === 'superadmin' || exemptFromAiCensorship || matchZone === 'adult';
 
-  const { isNSFW, isModelLoading } = useNSFWDetection(
+  const { isNSFW, isModelLoading, modelLoadFailed } = useNSFWDetection(
     localVideoRef,
     role,
     exemptFromNsfwPolicy,
@@ -126,8 +126,12 @@ function App() {
     blocksMatchmaking,
   } = useNsfwEnforcement(isNSFW, exemptFromNsfwPolicy, userId, token, nsfwEnforcementRuntime);
 
+  const blockMatchmakingForBrokenModel =
+    matchZone === 'moderated' && !exemptFromNsfwPolicy && modelLoadFailed;
+  const blocksMatchmakingCombined = blocksMatchmaking || blockMatchmakingForBrokenModel;
+
   const blocksMatchmakingRef = useRef(false);
-  blocksMatchmakingRef.current = blocksMatchmaking;
+  blocksMatchmakingRef.current = blocksMatchmakingCombined;
 
   const [onlineUsers, setOnlineUsers] = useState(0);
   const [mobilePipHidden, setMobilePipHidden] = useState(false);
@@ -613,16 +617,16 @@ function App() {
     navigate('/salas', { replace: true });
   }, [stopMatch, setSalaSessionActive, navigate]);
 
-  /** Durante bloqueo IA no debe seguir en cola ni en llamada. */
+  /** Durante bloqueo IA o modelo IA roto en sala moderada: no cola ni llamada. */
   useEffect(() => {
-    if (!blocksMatchmaking) return;
+    if (!blocksMatchmakingCombined) return;
     const s = useAppStore.getState();
     if (s.matchZone === 'adult') return;
     if (s.matchStatus === 'waiting' || s.matchStatus === 'matched') {
       socket.emit('cancel_matchmaking', {});
       stopMatch();
     }
-  }, [blocksMatchmaking, stopMatch]);
+  }, [blocksMatchmakingCombined, stopMatch]);
 
   // --- Mobile Swipe Handlers ---
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
@@ -747,6 +751,23 @@ function App() {
           <span className="text-[8px] text-red-200/80 mt-1 max-w-[140px]">
             &gt;10 s seguidos activará un bloqueo de 2 min
           </span>
+        </div>
+      )}
+      {blockMatchmakingForBrokenModel && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 text-white p-3 text-center z-[12]">
+          <ShieldAlert size={26} className="mb-2 text-orange-400 shrink-0" />
+          <span className="font-bold text-xs leading-snug px-1">Moderación IA no disponible</span>
+          <span className="text-[10px] text-gray-400 mt-2 leading-snug max-w-[220px]">
+            No se pudo cargar el modelo en esta sala. Puedes ir a salas y elegir la sala adulta (si aplica) o
+            reintentar recargando la página.
+          </span>
+          <button
+            type="button"
+            onClick={goToSalas}
+            className="mt-4 px-4 py-2 rounded-xl text-xs font-semibold bg-gray-800 border border-gray-600 hover:bg-gray-700"
+          >
+            Ir a salas
+          </button>
         </div>
       )}
       {error && (

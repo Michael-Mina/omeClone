@@ -21,6 +21,7 @@ function formatMmSs(totalSec: number): string {
 
 export default function SalasPage() {
   const navigate = useNavigate();
+  const supportEmail = (import.meta.env.VITE_SUPPORT_EMAIL as string | undefined)?.trim() || '';
   const {
     matchZone,
     setMatchZone,
@@ -170,6 +171,14 @@ export default function SalasPage() {
               {access.kind === 'cooldown' &&
                 'Debes esperar a que termine el bloqueo automático por políticas de contenido en la sala estándar antes de volver a unirte.'}
             </p>
+            {(access.kind === 'moderation' || access.kind === 'permanent') && supportEmail ? (
+              <p className="text-xs text-gray-400 mt-3">
+                ¿Crees que es un error?{' '}
+                <a href={`mailto:${supportEmail}`} className="text-blue-400 hover:underline font-medium">
+                  Escribe a soporte
+                </a>
+              </p>
+            ) : null}
             {access.kind === 'cooldown' && cooldownLeftSec != null && cooldownLeftSec > 0 && (
               <p className="inline-flex items-center justify-center gap-2 rounded-xl bg-black/35 px-4 py-2 font-mono text-2xl font-black text-orange-200 tabular-nums">
                 <Clock size={22} className="text-orange-300 shrink-0" />

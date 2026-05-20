@@ -30,6 +30,10 @@ class MatchmakingService:
         Busca un usuario en espera en la misma sala. Si lo encuentra, retorna match.
         Si no, coloca al usuario en la cola de esa sala.
         """
+        # Un mismo socket no puede estar en dos colas a la vez (evita dobles entradas / spam).
+        for z in VALID_MATCH_ZONES:
+            waiting_queues[z] = [u for u in waiting_queues[z] if u["sid"] != sid]
+
         zone = normalize_match_zone(filters)
         queue = waiting_queues[zone]
 

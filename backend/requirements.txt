@@ -11,3 +11,5 @@ python-multipart
 deep-translator
 google-auth>=2.29.0
 stripe>=11.0.0
+slowapi>=0.1.9
+pytest>=8.0.0
